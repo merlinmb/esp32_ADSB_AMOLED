@@ -32,7 +32,7 @@ It is designed to receive and display real-time flight data, providing a compact
 2. Install [PlatformIO](https://platformio.org/) in your IDE (e.g., Visual Studio Code).
 3. Open the project folder in your IDE.
 4. Configure your own settings as per the Configuration section below.
-5. Build and upload the firmware to your LilyGo T-Display S3.
+5. Build and upload the firmware to your LilyGo T-Display-S3 AMEOLED (Available here - https://lilygo.cc/products/t-display-s3-amoled).
 
 ## Configuration
 
@@ -49,7 +49,7 @@ This step is essential to ensure the project works with your specific network an
 
 ## Usage
 
-1. Power on the LilyGo T-Display S3.
+1. Power on the LilyGo T-Display S3 AMOLED.
 2. The device will initialize and display startup messages.
 3. Connect to the local web server for additional configuration or monitoring.
 4. View real-time flight data on the display.
