@@ -36,13 +36,14 @@ struct FlightStats {
     int emergencyCount=0;
     float avgAltitude=0;
     float avgSpeed;
-    AircraftDetailsStruct highestAircraft;
-    AircraftDetailsStruct lowestAircraft;
-    AircraftDetailsStruct fastestAircraft;
-    AircraftDetailsStruct slowestAircraft;
-    AircraftDetailsStruct closestAircraft;
-    AircraftDetailsStruct farthestAircraft;
-    AircraftDetailsStruct emergencyAircraft[10]; // Store up to 10 emergencies
+    byte highestAircraft;
+    byte lowestAircraft;
+    byte fastestAircraft;
+    byte slowestAircraft;
+    byte closestAircraft;
+    byte farthestAircraft;
+    int emergencyAircraft[10]; // Store up to 10 emergencies
+    AircraftDetailsStruct aircraft[100]; // Store up to 100 aircraft
 };
 
 FlightStats _flightStats;
@@ -170,19 +171,23 @@ void processFlightData(DynamicJsonDocument &doc)
     
     JsonArray aircraft = doc["aircraft"].as<JsonArray>();
     _flightStats.totalAircraft = aircraft.size();
+
+    DEBUG_PRINTLN("processFlightData:populating AircraftDetailsStructs");
+    DEBUG_PRINTLN("Total Aircraft from JSON: " + String(_flightStats.totalAircraft));
     
-    _flightStats.highestAircraft = {};
-    _flightStats.highestAircraft.altitude = 0; // Initialize to 0
-    _flightStats.lowestAircraft = {};
-    _flightStats.lowestAircraft.altitude = std::numeric_limits<int>::max(); // Initialize to max value
-    _flightStats.fastestAircraft = {};
-    _flightStats.fastestAircraft.speed = 0; // Initialize to 0
-    _flightStats.slowestAircraft = {};
-    _flightStats.slowestAircraft.speed = std::numeric_limits<float>::max(); // Initialize to max value
-    _flightStats.closestAircraft = {};
-    _flightStats.closestAircraft.distance = std::numeric_limits<float>::max(); // Initialize to max value
-    _flightStats.farthestAircraft = {};
-    _flightStats.farthestAircraft.distance = 0; // Initialize to 0
+    _flightStats.highestAircraft = 0;
+
+    float __highestAircraftaltitude = 0; // Initialize to 0
+    _flightStats.lowestAircraft = 0;
+    float __lowestAircraftaltitude = std::numeric_limits<int>::max(); // Initialize to max value
+    _flightStats.fastestAircraft = 0;
+    float __fastestAircraftspeed = 0; // Initialize to 0
+    _flightStats.slowestAircraft = 0;
+    float __slowestAircraftspeed = std::numeric_limits<float>::max(); // Initialize to max value
+    _flightStats.closestAircraft = 0;
+    float __closestAircraftdistance = std::numeric_limits<float>::max(); // Initialize to max value
+    _flightStats.farthestAircraft = 0;
+    float __farthestAircraftdistance = 0; // Initialize to 0
     _flightStats.emergencyCount = 0;
 
     float totalAltitude = 0;
@@ -198,7 +203,7 @@ void processFlightData(DynamicJsonDocument &doc)
             plane["route"] | "Unknown",
             plane["alt_baro"] | 0,
             plane["distance"],
-            plane["tas"], // true air speed (ias=indicated air speed)
+            plane["gs"], // gs=ground speed; tas = true air speed (ias=indicated air speed)
             getFlightStatus(plane["baro_rate"] | 0), //status
             plane["flight"] | "Unknown", //identifier
             plane["r"] | "Unknown", //flight
@@ -215,38 +220,43 @@ void processFlightData(DynamicJsonDocument &doc)
         totalAltitude += __currentAircraft.altitude;
         totalSpeed += __currentAircraft.speed;
 
+
         printAircraft(__currentAircraft);
 
         if (__currentAircraft.altitude==0 || __currentAircraft.speed==0 )
         {
-            DEBUG_PRINTLN("Skipping aircraft as is likely on the ground");
+            DEBUG_PRINTLN("Skipping aircraft as is likely on the ground and/or not moving");
             continue;
         }
 
+
+        _flightStats.aircraft[__currentAircraftIndex] = __currentAircraft;
         DEBUG_PRINTLN("Aircraft details captured " + String(__currentAircraftIndex));
+
+
 
         DEBUG_PRINTLN("Calculating highest, lowest, fastest, slowest, closest, farthest, emergency");
         //highest, lowest, fastest, slowest, closest, farthest, emergency:
-        if (__currentAircraft.altitude > _flightStats.highestAircraft.altitude) {
-            _flightStats.highestAircraft = __currentAircraft;
+        if (__currentAircraft.altitude > __highestAircraftaltitude) {
+            _flightStats.highestAircraft = __currentAircraftIndex;
         }
-        if (__currentAircraft.altitude < _flightStats.lowestAircraft.altitude && __currentAircraft.altitude > 0 && __currentAircraft.speed > 0) {
-            _flightStats.lowestAircraft = __currentAircraft;
+        if (__currentAircraft.altitude < __lowestAircraftaltitude && __currentAircraft.altitude > 0 && __currentAircraft.speed > 0) {
+            _flightStats.lowestAircraft = __currentAircraftIndex;
         }
-        if (__currentAircraft.speed > _flightStats.fastestAircraft.speed) {
-            _flightStats.fastestAircraft = __currentAircraft;
+        if (__currentAircraft.speed > __fastestAircraftspeed) {
+            _flightStats.fastestAircraft = __currentAircraftIndex;
         }
-        if (__currentAircraft.speed < _flightStats.slowestAircraft.speed && __currentAircraft.speed > 0) {
-            _flightStats.slowestAircraft = __currentAircraft;
+        if (__currentAircraft.speed < __slowestAircraftspeed && __currentAircraft.speed > 0) {
+            _flightStats.slowestAircraft = __currentAircraftIndex;
         }
-        if (distance > 0 && distance < _flightStats.closestAircraft.distance ) {
-            _flightStats.closestAircraft = __currentAircraft;
+        if (distance > 0 && distance < __closestAircraftdistance ) {
+            _flightStats.closestAircraft = __currentAircraftIndex;
         }
-        if (distance > _flightStats.farthestAircraft.distance) {
-            _flightStats.farthestAircraft = __currentAircraft;
+        if (distance > __farthestAircraftdistance) {
+            _flightStats.farthestAircraft = __currentAircraftIndex;
         }
         if (isSquawkEmergency(__currentAircraft.squawk))
-            _flightStats.emergencyAircraft[_flightStats.emergencyCount++] = __currentAircraft;
+            _flightStats.emergencyAircraft[_flightStats.emergencyCount++] = __currentAircraftIndex;
 
         _flightStats.totalAircraft = __currentAircraftIndex;
         __currentAircraftIndex++;
@@ -262,12 +272,12 @@ void printFlightStats() {
 
         
     DEBUG_PRINTLN("Closest Aircraft Details:\n"); 
-    printAircraft(_flightStats.closestAircraft);
+    printAircraft(_flightStats.aircraft[_flightStats.closestAircraft]);
 
     
     DEBUG_PRINTLN("Emergency Aircraft Details:  *****\n");
     for (int i = 0; i < _flightStats.emergencyCount; i++) {
-        printAircraft(_flightStats.emergencyAircraft[i]);
+        printAircraft(_flightStats.aircraft[_flightStats.emergencyAircraft[i]]);
     }
 }
 

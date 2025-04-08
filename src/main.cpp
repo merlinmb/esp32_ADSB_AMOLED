@@ -125,6 +125,7 @@ TFT_eSPI _display = TFT_eSPI();
 TFT_eSprite _sprite = TFT_eSprite(&_display);
 TFT_eSprite _overviewStatSprite = TFT_eSprite(&_display);
 TFT_eSprite _topStatSprite = TFT_eSprite(&_display);
+TFT_eSprite _mapSprite = TFT_eSprite(&_display);
 TFT_eSprite _emergencySprite[MAXRENDER_EMERGENCIES] = {TFT_eSprite(&_display), TFT_eSprite(&_display), TFT_eSprite(&_display), TFT_eSprite(&_display)};
 
 LilyGo_Class _amoled;
@@ -251,6 +252,11 @@ void clearOverviewSprite()
 void clearTopStatSprite()
 {
   _topStatSprite.fillSprite(BACKGROUNDCOLOR);
+}
+
+void clearMapSprite()
+{
+  _mapSprite.fillSprite(BACKGROUNDCOLOR);
 }
 
 void clearEmergencySprite(byte line)
@@ -735,12 +741,12 @@ void RenderGeneralStatsSprite()
 
   RenderHeadingtoSprite(_topStatSprite, "Aircraft Statistics", TFT_WHITE, TFT_BLACK);
 
-  outputRow(_topStatSprite, 1,"Fastest:", _flightStats.fastestAircraft.identifier, String((int)(_flightStats.fastestAircraft.speed)) + "kt");
-  outputRow(_topStatSprite,2, "Slowest:", _flightStats.slowestAircraft.identifier, String((int)(_flightStats.slowestAircraft.speed)) + "kt");
-  outputRow(_topStatSprite,3, "Highest:", _flightStats.highestAircraft.identifier, String((int)(_flightStats.highestAircraft.altitude)) + "ft");
-  outputRow(_topStatSprite,4, "Lowest:", _flightStats.lowestAircraft.identifier, String((int)(_flightStats.lowestAircraft.altitude)) + "ft");
-  outputRow(_topStatSprite,5, "Closest:", _flightStats.closestAircraft.identifier, String((int)(_flightStats.closestAircraft.distance)) + "nmi");
-  outputRow(_topStatSprite,6, "Farthest:", _flightStats.farthestAircraft.identifier, String((int)(_flightStats.farthestAircraft.distance)) + "nmi");
+  outputRow(_topStatSprite, 1,"Fastest:", _flightStats.aircraft[_flightStats.fastestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.fastestAircraft].speed)) + "kt");
+  outputRow(_topStatSprite,2, "Slowest:", _flightStats.aircraft[_flightStats.slowestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.slowestAircraft].speed)) + "kt");
+  outputRow(_topStatSprite,3, "Highest:", _flightStats.aircraft[_flightStats.highestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.highestAircraft].altitude)) + "ft");
+  outputRow(_topStatSprite,4, "Lowest:", _flightStats.aircraft[_flightStats.lowestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.lowestAircraft].altitude)) + "ft");
+  outputRow(_topStatSprite,5, "Closest:", _flightStats.aircraft[_flightStats.closestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.closestAircraft].distance)) + "nmi");
+  outputRow(_topStatSprite,6, "Farthest:", _flightStats.aircraft[_flightStats.farthestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.farthestAircraft].distance)) + "nmi");
   outputRow(_topStatSprite, 7, "Emergencies:", (_flightStats.emergencyCount > 0)?String(_flightStats.emergencyCount): "None","","","", (_flightStats.emergencyCount > 0)?TFT_RED:TFT_GREEN);
 }
 
@@ -809,8 +815,9 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
   // callsign
   if (aircraft.identifier.length() > 0)
   {
+    sprite.setTextDatum(TL_DATUM);
     sprite.setFreeFont(&FLIGHTDETAILS_LABELFONT);
-    sprite.drawString(aircraft.identifier, P_COL3, P_ROW2);
+    sprite.drawString(aircraft.identifier, P_COL2, P_ROW2);
     sprite.unloadFont();
   }
 
@@ -830,13 +837,14 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
     sprite.setFreeFont(&FLIGHTDETAILS_LABELFONT);
     sprite.setTextDatum(TL_DATUM);
     sprite.setTextColor(TFT_WHITE);
-    sprite.drawString(String((int)aircraft.distance) + "nmi", P_COL3-25, P_ROW5);
+    sprite.drawString(String((int)aircraft.distance) + "nmi", P_COL2, P_ROW5);
     sprite.unloadFont();
   }
 
   // status asc, dec, cruise
   if (aircraft.status.length() > 0)
   {
+    sprite.setTextDatum(TL_DATUM);
     sprite.setFreeFont(&FLIGHTDETAILS_LABELFONT);
     sprite.setTextColor(getLiveADSBStatusColorFromInput(aircraft.status));
     sprite.drawString(aircraft.status, P_COL5, P_ROW5);
@@ -846,15 +854,17 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
   // squawk
   if (aircraft.squawk > 0)
   {
+    sprite.setTextDatum(TL_DATUM);
     sprite.setFreeFont(&FLIGHTDETAILS_LABELFONT);
     sprite.setTextColor(getLiveADSBStatusColorFromSquawk(aircraft.squawk));
-    sprite.drawString(String(aircraft.squawk), P_COL3-25, P_ROW7);
+    sprite.drawString(String(aircraft.squawk), P_COL2, P_ROW7);
     sprite.unloadFont();
   }
 
   //altitude
   if(aircraft.altitude > 0)
   {
+    sprite.setTextDatum(TL_DATUM);
     sprite.setFreeFont(&FLIGHTDETAILS_LABELFONT);
     sprite.setTextColor(TFT_WHITE);
     sprite.drawString(String((int)aircraft.altitude) + "ft", P_COL5, P_ROW7);
@@ -867,7 +877,7 @@ void RenderEmergencySprite(int __emergencyAircraftIndex)
 {
  
   DEBUG_PRINTLN("RenderEmergencySprite: ADSB " + String(__emergencyAircraftIndex));
-  RenderAircraftToSprite(_emergencySprite[__emergencyAircraftIndex], _flightStats.emergencyAircraft[__emergencyAircraftIndex]);
+  RenderAircraftToSprite(_emergencySprite[__emergencyAircraftIndex], _flightStats.aircraft[_flightStats.emergencyAircraft[__emergencyAircraftIndex]]);
   _emergencySprite[__emergencyAircraftIndex].drawRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, TFT_RED);
   //_emergencySprite[__emergencyAircraftIndex].drawRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, TFT_RED);
 }
@@ -918,6 +928,117 @@ void renderSystemInfo()
   outputRow(_sprite, 5, "Memory", String(ESP.getFreeHeap()),"","","");
   outputRow(_sprite, 6, "By", "markbeets@gmail.com","","","");
 }
+
+uint16_t getAircraftColorByAltitude(TFT_eSprite &sprite, int altitude) {
+  // Get the color based on the altitude
+  uint16_t color = sprite.color565(255,255,255);
+  if (altitude <= 500) {
+      color = sprite.color565(255, 0, 0); // Red for very low altitude
+  } else if (altitude <= 2000) {
+      color = sprite.color565(255, 165, 0); // Orange for low altitude
+  } else if (altitude <= 6000) {
+      color = sprite.color565(255, 255, 0); // Yellow for medium-low altitude
+  } else if (altitude <= 10000) {
+      color = sprite.color565(0, 255, 0); // Green for medium altitude
+  } else if (altitude <= 20000) {
+      color = sprite.color565(0, 0, 255); // Blue for high altitude
+  } else if (altitude <= 30000) {
+      color = sprite.color565(75, 0, 130); // Indigo for very high altitude
+  } else {
+      color = sprite.color565(238, 130, 238); // Violet for extremely high altitude
+  }
+  return color;
+}
+
+// Function to render the map
+void renderMap(TFT_eSprite &_sprite) {
+  DEBUG_PRINTLN("Rendering map...");
+
+  // Clear the sprite
+  DEBUG_PRINTLN("Clearing sprite...");
+  _sprite.fillSprite(TFT_BLACK);
+  _sprite.setTextDatum(TL_DATUM);
+  _sprite.setFreeFont(&FLIGHTDETAILS_MINIHEADINGFONT);
+
+  // Draw the center cross
+  DEBUG_PRINTLN("Drawing center cross...");
+  int centerX = DISPLAY_WIDTH / 2;
+  int centerY = DISPLAY_HEIGHT / 2;
+
+  // Determine the maximum latitude and longitude differences in miles
+  float maxLatDiffMiles = 0;
+  float maxLonDiffMiles = 0;
+  for (int i = 0; i < _flightStats.totalAircraft; i++) {
+    float latDiff = abs(_flightStats.aircraft[i].latitude - myLat);
+    float lonDiff = abs(_flightStats.aircraft[i].longitude - myLon);
+
+    // Convert latitude and longitude differences to miles
+    float latDiffMiles = latDiff * 69.0; // 1 degree latitude ≈ 69 miles
+    float lonDiffMiles = lonDiff * 69.0 * cos(radians(myLat)); // Adjust longitude by cos(latitude)
+
+    if (latDiffMiles > maxLatDiffMiles) maxLatDiffMiles = latDiffMiles;
+    if (lonDiffMiles > maxLonDiffMiles) maxLonDiffMiles = lonDiffMiles;
+  }
+
+  // Calculate scaling factors
+  float xScale = (DISPLAY_WIDTH / 2.0) / maxLonDiffMiles;
+  float yScale = (DISPLAY_HEIGHT / 2.0) / maxLatDiffMiles;
+  float scale = min(xScale, yScale); // Use the smaller scale to maintain proportions
+
+  // Draw center lines and circles with scaling based on miles
+  float target_2point5_miles = 2.5 * scale;
+  float radius_10_miles = 10 * scale; // Radius for 10 miles in pixels
+  float radius_50_miles = 50 * scale; // Radius for 50 miles in pixels
+
+  // Draw the circles representing 10 miles and 50 miles
+  _sprite.drawCircle(centerX, centerY, static_cast<int>(radius_10_miles), TFT_DARKGREY); // Circle for 10 miles
+  _sprite.drawCircle(centerX, centerY, static_cast<int>(radius_50_miles), TFT_DARKGREY); // Circle for 50 miles
+
+  _sprite.drawLine(centerX - static_cast<int>(target_2point5_miles), centerY, centerX + static_cast<int>(target_2point5_miles), centerY, TFT_WHITE); // Horizontal line
+  _sprite.drawLine(centerX, centerY - static_cast<int>(target_2point5_miles), centerX, centerY + static_cast<int>(target_2point5_miles), TFT_WHITE); // Vertical line
+  
+
+  // Render each aircraft
+  DEBUG_PRINTLN("Rendering aircraft...");
+  for (int i = 0; i < _flightStats.totalAircraft; i++) {
+    AircraftDetailsStruct __aircraft = _flightStats.aircraft[i];
+    DEBUG_PRINTLN("Processing aircraft: " + __aircraft.identifier);
+
+    // Calculate relative position in miles
+    float __latDiffMiles = (__aircraft.latitude - myLat) * 69.0;
+    float __lonDiffMiles = (__aircraft.longitude - myLon) * 69.0 * cos(radians(myLat));
+
+    DEBUG_PRINTLN("Latitude difference (miles): " + String(__latDiffMiles));
+    DEBUG_PRINTLN("Longitude difference (miles): " + String(__lonDiffMiles));
+
+    // Scale the differences to fit within the display
+    int __x = centerX + static_cast<int>(__lonDiffMiles * scale);
+    int __y = centerY - static_cast<int>(__latDiffMiles * scale);
+
+    DEBUG_PRINTLN("Calculated position: x=" + String(__x) + ", y=" + String(__y));
+
+    if (__x >= DISPLAY_WIDTH || __x < 0 || __y >= DISPLAY_HEIGHT || __y < 0) {
+      DEBUG_PRINTLN("Aircraft is outside display bounds, skipping...");
+      continue; // Skip if the aircraft is outside the display bounds
+    }
+
+    DEBUG_PRINTLN("Getting color for aircraft");
+    uint16_t __aircraftColor = getAircraftColorByAltitude(_sprite, __aircraft.altitude); // Get color based on altitude
+    DEBUG_PRINTLN("Generated color for aircraft: " + String(__aircraftColor, HEX));
+
+    // Draw the aircraft as a filled circle
+    _sprite.fillCircle(__x, __y, 5, __aircraftColor);
+    DEBUG_PRINTLN("Aircraft rendered at position: x=" + String(__x) + ", y=" + String(__y));
+
+    _sprite.setTextColor(TFT_WHITE);
+    _sprite.drawString(__aircraft.identifier, __x + 5, __y + 5);
+    
+  }
+  _sprite.unloadFont();
+
+  DEBUG_PRINTLN("Map rendering complete.");
+}
+
 
 /***************************************************
   MQTT
@@ -997,6 +1118,11 @@ void initDisplay()
 
   _topStatSprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
   _topStatSprite.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  _mapSprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+  _mapSprite.setTextColor(TFT_WHITE, TFT_BLACK);
+
+    
 
   for (byte i = 0; i < MAXRENDER_EMERGENCIES; i++)
   {
@@ -1269,10 +1395,15 @@ void updateADSBDataRenderSprites()
   }
 
   DisplayOut("Rendering overview screen");
-  RenderAircraftToSprite(_overviewStatSprite,  _flightStats.closestAircraft);
+  RenderAircraftToSprite(_overviewStatSprite,  _flightStats.aircraft[_flightStats.closestAircraft]);
 
   DisplayOut("Rendering general statistics");
   RenderGeneralStatsSprite();
+
+  DisplayOut("Rendering Map Sprite");
+  renderMap(_mapSprite);
+
+  
 }
 
 void setupWifi()
@@ -1311,10 +1442,10 @@ void setup()
 
   initDisplay();
   delay(250); // give the screen time to init
-
+  
   DisplayOut("Starting ADSBMonitor");
   DisplayOut("----------------------------------");
-
+  
   setupWifi();
 
   DisplayOut("Web Server config");
@@ -1442,11 +1573,16 @@ void loop()
           _topStatSprite.pushToSprite(&_sprite, 0, 0);
           _skipDrawClock = true;
           break;
+          case 3:
+          DEBUG_PRINTLN("Pushing map to main sprite");
+          _mapSprite.pushToSprite(&_sprite, 0, 0);
+          _skipDrawClock = true;
+          break;          
         default:
-          if (_currentFrame > 2 && _currentFrame < 6 && _currentFrame < _flightStats.emergencyCount + 3)
+          if (_currentFrame > 3 && _currentFrame < 7 && _currentFrame < _flightStats.emergencyCount + 3)
           {
-            DEBUG_PRINTLN("Pushing Emergency sprite [" + String(_currentSubFrame - 3) + "] to main sprite");
-            _emergencySprite[_currentFrame - 3].pushToSprite(&_sprite, 0, 0);
+            DEBUG_PRINTLN("Pushing Emergency sprite [" + String(_currentSubFrame - 4) + "] to main sprite");
+            _emergencySprite[_currentFrame - 4].pushToSprite(&_sprite, 0, 0);
             _skipDrawClock = false;
           }
           break;
@@ -1458,7 +1594,7 @@ void loop()
 
 
       _currentFrame++;
-      if (_currentFrame > _flightStats.emergencyCount + 2)
+      if (_currentFrame > _flightStats.emergencyCount + 3)
       {
         _currentFrame = 1;
       }
