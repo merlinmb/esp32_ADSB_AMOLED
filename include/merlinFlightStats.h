@@ -281,10 +281,11 @@ void processFlightData(DynamicJsonDocument &doc)
         if (isSquawkEmergency(__currentAircraft.squawk))
             _flightStats.emergencyAircraft[_flightStats.emergencyCount++] = __currentAircraftIndex;
 
-        DEBUG_PRINTLN("Aircraft details captured " + String(__currentAircraftIndex));
 
-        _flightStats.totalAircraft = __currentAircraftIndex;
         __currentAircraftIndex++;
+        
+        _flightStats.totalAircraft = __currentAircraftIndex;
+        DEBUG_PRINTLN("Aircraft details captured " + String(__currentAircraftIndex));
     }
     
     _flightStats.avgAltitude = (_flightStats.totalAircraft > 0) ? totalAltitude / _flightStats.totalAircraft : 0;

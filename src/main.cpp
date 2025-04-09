@@ -92,9 +92,6 @@ int _selectedBrightness = 4;
 bool _brightnessHigh;
 byte _brightness = 100;
 
-int px = 10;
-int py = 10;
-
 String _mqttPostFix = "";
 float _batteryVoltage = 0;
 
@@ -171,7 +168,7 @@ unsigned long _epochTime;
 long period = 1000;
 long currentTime = 0;
 
-String _configStation = "";
+String _configJSONURI = "";
 int _configFlipSreen = 999;
 
 String _lastMQTTMessage = "";
@@ -255,8 +252,6 @@ void clear_Display()
 
 #define TFT_GREY 0x5AEB
 
-
-
 bool initial = 1;
 
 /***************************************************
@@ -269,13 +264,13 @@ bool parseConfigValue(String key, String value)
   key.toLowerCase();
   value.trim();
 
-  if (key == "station")
+  if (key == "jsonURI")
   {
     value.toUpperCase();
-    if (_configStation != value)
+    if (_configJSONURI != value)
     {
-      _configStation = value;
-      _locationCode = _configStation;
+      _configJSONURI = value;
+      _locationCode = _configJSONURI;
       _forceUpdate = true;
     }
   }
@@ -362,9 +357,10 @@ void saveConfigValuesSPIFFS()
   File __configFile = SPIFFS.open("/config.ini", FILE_WRITE);
   DEBUG_PRINTLN("Saving config to FS");
 
-  writeStrtoFile(__configFile, "station", String(_configStation));
+  writeStrtoFile(__configFile, "jsonURI", String(_locationCode));
   writeStrtoFile(__configFile, "flipscreen", String(_configFlipSreen == 3));
   writeStrtoFile(__configFile, "brightness", String(_brightness));
+  
   __configFile.close();
   DEBUG_PRINTLN("... Done");
   delay(250); // give SPIFFS chance to settle
@@ -959,8 +955,8 @@ void renderMap(TFT_eSprite &_sprite)
   int centerY = DISPLAY_HEIGHT / 2;
 
   // Determine the maximum latitude and longitude differences in miles
-  float maxLatDiffMiles = 0;
-  float maxLonDiffMiles = 0;
+  float maxLatDiffMiles = 1;
+  float maxLonDiffMiles = 1;
   for (int i = 0; i < _flightStats.totalAircraft; i++)
   {
     float latDiff = abs(_flightStats.aircraft[i].latitude - myLat);
@@ -987,14 +983,14 @@ void renderMap(TFT_eSprite &_sprite)
   float radius_50_miles = 50 * scale; // Radius for 50 miles in pixels
 
   _sprite.setTextColor(TFT_GREY);
-  _sprite.setTextDatum(BC_DATUM);
+  _sprite.setTextDatum(ML_DATUM);
   // Draw the circles representing 10 miles and 50 miles
   _sprite.drawCircle(centerX, centerY, static_cast<int>(radius_10_miles), TFT_DARKGREY); // Circle for 10 miles
   _sprite.drawCircle(centerX, centerY, static_cast<int>(radius_50_miles), TFT_DARKGREY); // Circle for 50 miles
 
 
-  _sprite.drawString("10", centerX , centerY + static_cast<int>(radius_10_miles));
-  _sprite.drawString("50", centerX , centerY + static_cast<int>(radius_50_miles));
+  _sprite.drawString("10", centerX - static_cast<int>(radius_10_miles) + 5, centerY );
+  _sprite.drawString("50", centerX - static_cast<int>(radius_50_miles)+5, centerY );
 
 
   _sprite.drawLine(centerX - static_cast<int>(target_2point5_miles), centerY, centerX + static_cast<int>(target_2point5_miles), centerY, CENTER_COLOR); // Horizontal line
@@ -1181,9 +1177,8 @@ void setupWebServer()
              __infoStr += "<form action='/set' id='myForm'>";
              
              
-             __infoStr += "<input for='station' data-lpignore='true' name='station' type='text' value='"+_locationCode+"' width=40%><br>";
-					   __infoStr += "Vertically Flip Screen:&nbsp;&nbsp;<input id='flipscreenHidden' onclick='checkFlipped()' data-lpignore='true' name='flipscreenHidden' type='checkbox' value='true' width=20% ";
-             __infoStr +=  String(_configFlipSreen==3?"checked":"")+"><input type='hidden' name='flipscreen' id='flipscreen' value='false' /><br>";
+             __infoStr += "Aircraft JSON URL: <input for='jsonURI' data-lpignore='jsonURI' name='jsonURI' type='text' value='"+_locationCode+"' width=80%><br>";
+             __infoStr +=  "<br>";
 
             __infoStr += "Screen brightness:&nbsp;&nbsp;";
             __infoStr += "<select id='brightness' name='brightness'>";
@@ -1199,11 +1194,13 @@ void setupWebServer()
              __infoStr += "</form>";
 
 
-					   __infoStr += "<hr  class='new5'>";
-             for (byte i = 0; i < DEBUGBUFFERLENGTH; i++)
+					   __infoStr += "<hr  class='new5'>";   
+
+             for (byte i = 0; i < _debugBufferPosition; i++) // StackArray - shift to left
              {
-                __infoStr += _debugBuffer[i] + "\n<br>";
-             }           
+              __infoStr += _debugBuffer[i]+ "\n<br>";
+             }
+
 					   __infoStr += "<hr class='new5'>Connected to: " + String(SSID) + " (" + _rssiQualityPercentage + "%)<br>";
 					   __infoStr += "Last Message Received:  <i>" + _lastMQTTMessage;
 					   __infoStr += "</i><br>Last Message Published: <i>" + _lastPublishedMQTTMessage;
