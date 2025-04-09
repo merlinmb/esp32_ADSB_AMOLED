@@ -2,9 +2,8 @@
 #include <FS.h>
 #include <SPIFFS.h>
 
-#include "esp_arduino_version.h"
-
-#include <LilyGo_AMOLED.h>      //To use LilyGo AMOLED series screens, please include <LilyGo_AMOLED.h>
+#include <Arduino.h>
+#include <LilyGo_AMOLED.h> //To use LilyGo AMOLED series screens, please include <LilyGo_AMOLED.h>
 #include "TFT_eSPI.h"
 
 #include <Wire.h>
@@ -28,11 +27,10 @@
 #include "fonts/Monospaced_plain_18.h"
 #include "fonts/Orbitron_Bold_16.h"
 #include "fonts/Orbitron_Medium_14.h"
+
 #include "OneButton.h"
 
 #define WMAPNAME "ADSB_Monitor"
-
-
 
 #define LOAD_GLCD  // Font 1. Original Adafruit 8 pixel font needs ~1820 bytes in FLASH
 #define LOAD_FONT2 // Font 2. Small 16 pixel high font, needs ~3534 bytes in FLASH, 96 characters
@@ -44,12 +42,12 @@
 
 #define DEBUGFONT Orbitron_Medium_20
 
-#define CLOCKFONT Orbitron_Light_32 //Orbitron_Medium_20
+#define CLOCKFONT Orbitron_Light_32 // Orbitron_Medium_20
 
 #define ADSBLINEFONT Monospaced_plain_16
 #define ADSBLINETIMEFONT Monospaced_plain_18
-#define ADSBLINEHEADINGFONT Orbitron_Medium_20// Square digital
-#define ADSBLINEDETAILFONT Orbitron_Medium_20 // Square digital
+#define ADSBLINEHEADINGFONT Orbitron_Medium_20 // Square digital
+#define ADSBLINEDETAILFONT Orbitron_Medium_20  // Square digital
 
 #define NODEPARTURESHEADINGFONT Orbitron_Medium_20 // Square digital
 
@@ -64,8 +62,8 @@
 #define SYSINFOFONTMEDIUM Orbitron_Bold_16
 #define SYSINFOLABELFONT Monospaced_plain_12
 
-#define BUTTON1 0
-#define BUTTON2 14
+#define BUTTON1 21
+#define BUTTON2 0
 
 OneButton _button1 = OneButton(BUTTON1, true, true);
 OneButton _button2 = OneButton(BUTTON2, true, true);
@@ -79,11 +77,14 @@ int _selectedBrightness = 4;
 
 #define location "51.39502, -1.3387" // 97 Enborne Road
 
-#define MCMDVERSION 1.3
+#define MCMDVERSION 1.4
 
 #define MAXBRIGHTNESS 255
 #define MINBRIGHTNESS 20
+
 #define BACKGROUNDCOLOR TFT_BLACK
+#define CENTER_COLOR TFT_GREENYELLOW
+
 #define CALLINGATBACKGROUNDCOLOR TFT_BLACK
 #define CALLINGATMARGIN 60
 #define CALLINGATSPRITEMOVEBY 12
@@ -107,7 +108,6 @@ boolean _forceRender = false;
 /* frames */
 byte _currentFrame = 2;
 int _currentSubFrame = 0;
-byte _numADSBs = 0;
 #define MAXRENDER_EMERGENCIES 4
 
 bool _forceDrawClock = false;
@@ -122,18 +122,18 @@ bool _forceDrawEmpty = false;
 String _locationCode = "";
 
 TFT_eSPI _display = TFT_eSPI();
-TFT_eSprite _sprite = TFT_eSprite(&_display);
+TFT_eSprite _mainSprite = TFT_eSprite(&_display);
 TFT_eSprite _overviewStatSprite = TFT_eSprite(&_display);
 TFT_eSprite _topStatSprite = TFT_eSprite(&_display);
 TFT_eSprite _mapSprite = TFT_eSprite(&_display);
 TFT_eSprite _emergencySprite[MAXRENDER_EMERGENCIES] = {TFT_eSprite(&_display), TFT_eSprite(&_display), TFT_eSprite(&_display), TFT_eSprite(&_display)};
 
 LilyGo_Class _amoled;
-#define DISPLAY_WIDTH 536 //_amoled.width()
+#define DISPLAY_WIDTH 536  //_amoled.width()
 #define DISPLAY_HEIGHT 240 //_amoled.height()
 
-#define CENTERX DISPLAY_WIDTH/2
-#define CENTERY DISPLAY_HEIGHT/2
+#define CENTERX DISPLAY_WIDTH / 2
+#define CENTERY DISPLAY_HEIGHT / 2
 
 #define UPDATE_WIFICHECK_INTERVAL_MILLISECS 60000 // Update every 1 min
 #define UPDATE_CALLINGATSCROLL 120                // Update every 200ms
@@ -154,13 +154,10 @@ unsigned long _runBrightness = 0;
 bool _initComplete = false;
 bool _displayInit = false;
 
-DynamicJsonDocument _flightDetailsJSONDoc(20000);
-
 const byte DEBUGBUFFERLENGTH = 8;
 byte _debugBufferPosition = 0;
 String _debugBuffer[DEBUGBUFFERLENGTH];
 
-String _ADSBBuffer[4];
 String _ip = "";
 
 #define NTPTIMEOUTVAL 4500
@@ -189,24 +186,6 @@ String _lastMQTTMessage = "";
 #endif
 
 
-int getWiFiSignalQuality() {
-  if (WiFi.status() != WL_CONNECTED) {
-    return 0; // Return 0% if not connected
-  }
-  int32_t rssi = WiFi.RSSI();
-  int quality = 0;
-
-  if (rssi <= -100) {
-    quality = 0;
-  } else if (rssi >= -50) {
-    quality = 100;
-  } else {
-    quality = 2 * (rssi + 100);
-  }
-
-  return quality;
-}
-
 /***************************************************
   Screen Control Functions
 ****************************************************/
@@ -216,6 +195,7 @@ void setBrightness(byte brightnessValue)
   DEBUG_PRINTLN("setBrightness: " + String(brightnessValue));
 
   _amoled.setBrightness(brightnessValue);
+  
 
   for (int i = 0; i < 5; i++)
   {
@@ -226,7 +206,6 @@ void setBrightness(byte brightnessValue)
     }
   }
 }
-
 
 void toggleBrightness(bool isBright)
 {
@@ -241,7 +220,7 @@ void toggleBrightness(bool isBright)
 
 void clearSprite()
 {
-  _sprite.fillSprite(BACKGROUNDCOLOR);
+  _mainSprite.fillSprite(BACKGROUNDCOLOR);
 }
 
 void clearOverviewSprite()
@@ -267,9 +246,8 @@ void clearEmergencySprite(byte line)
 void clear_Display()
 {
   clearSprite();
-  _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_sprite.getPointer());  
+  _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
 }
-
 
 /***************************************************
   Clock Rendering
@@ -277,16 +255,7 @@ void clear_Display()
 
 #define TFT_GREY 0x5AEB
 
-#define CLOCKRADIUS 80
 
-float sx = 0, sy = 1, mx = 1, my = 0, hx = -1, hy = 0; // Saved H, M, S x & y multipliers
-float sdeg = 0, mdeg = 0, hdeg = 0;
-uint16_t osx = CENTERX, osy = CENTERY, omx = CENTERX, omy = CENTERY, ohx = CENTERX, ohy = CENTERY; // Saved H, M, S x & y coords
-uint16_t x0 = 0, x1 = 0, yy0 = 0, yy1 = 0;
-uint32_t targetTime = 0; // for next 1 second timeout
-
-static uint8_t conv2d(const char *p);                                                // Forward declaration needed for IDE 1.6.x
-uint8_t hh = conv2d(__TIME__), mm = conv2d(__TIME__ + 3), ss = conv2d(__TIME__ + 6); // Get H, M, S from compile time
 
 bool initial = 1;
 
@@ -401,14 +370,6 @@ void saveConfigValuesSPIFFS()
   delay(250); // give SPIFFS chance to settle
 }
 
-static uint8_t conv2d(const char *p)
-{
-  uint8_t v = 0;
-  if ('0' <= *p && *p <= '9')
-    v = *p - '0';
-  return 10 * v + *++p - '0';
-}
-
 void drawProgress(byte percentage, String label)
 {
   clearSprite();
@@ -435,32 +396,32 @@ void DisplayOut(String outStr)
   DEBUG_PRINTLN(outStr);
 
   if (_initComplete)
-     return;
+    return;
 
   // render
   clearSprite();
 
-  _sprite.setFreeFont(&DEBUGFONT);
-  _sprite.setTextColor(TFT_WHITE, TFT_BLACK, true);
+  _mainSprite.setFreeFont(&DEBUGFONT);
+  _mainSprite.setTextColor(TFT_WHITE, TFT_BLACK, true);
   //_sprite.setTextSize(12);
   _debugBuffer[_debugBufferPosition] = outStr;
   for (byte i = 0; i < _debugBufferPosition; i++) // StackArray - shift to left
   {
-    _sprite.drawString(_debugBuffer[i], 5, 26 * i);
+    _mainSprite.drawString(_debugBuffer[i], 5, 26 * i);
   }
-  _sprite.unloadFont();
-    
+  _mainSprite.unloadFont();
+
   //_sprite.pushSprite(0, 0);
-  _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_sprite.getPointer());
+  _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
   // delay(100);
 }
 
 // Draw a triangle
 void drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint32_t colour)
 {
-  _sprite.drawLine(x0, y0, x1, y1, colour);
-  _sprite.drawLine(x1, y1, x2, y2, colour);
-  _sprite.drawLine(x2, y2, x0, y0, colour);
+  _mainSprite.drawLine(x0, y0, x1, y1, colour);
+  _mainSprite.drawLine(x1, y1, x2, y2, colour);
+  _mainSprite.drawLine(x2, y2, x0, y0, colour);
 }
 
 // Draw a triangle
@@ -470,7 +431,7 @@ void drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, in
 }
 
 // Fill a triangle
-void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2)
+void fillTriangle(TFT_eSprite &__sprite, uint16_t color, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2)
 {
 
   int16_t a, b, y, last;
@@ -502,7 +463,7 @@ void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, in
       a = x2;
     else if (x2 > b)
       b = x2;
-    _sprite.drawFastHLine(a, y0, b - a + 1, TFT_WHITE);
+      __sprite.drawFastHLine(a, y0, b - a + 1, color);
     return;
   }
 
@@ -539,7 +500,7 @@ void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, in
     */
     if (a > b)
       _swap_int16_t(a, b);
-    _sprite.drawFastHLine(a, y, b - a + 1, TFT_WHITE);
+      __sprite.drawFastHLine(a, y, b - a + 1, color);
   }
 
   // For lower part of triangle, find scanline crossings for segments
@@ -560,14 +521,14 @@ void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, in
       _swap_int16_t(a, b);
     // writeFastHLine(a, y, b - a + 1);
     // display->drawHorizontalLine(a, y, b - a + 1);
-    _sprite.drawFastHLine(a, y, b - a + 1, TFT_WHITE);
+    __sprite.drawFastHLine(a, y, b - a + 1, color);
   }
 }
 
 void fillandDrawRect(int x1, int y1, int x2, int y2, int radius, uint8_t bgColor, uint8_t lineColor)
 {
-  _sprite.fillRect(x1, y1, x2, y2, bgColor);
-  _sprite.fillRoundRect(x1 - TIMEBOXMARGIN - 3, y1 - TIMEBOXMARGIN - 3, x2 - x1 + TIMEBOXMARGIN * 2 + 6, y2 - y1 + TIMEBOXMARGIN * 2 + 6, radius, lineColor);
+  _mainSprite.fillRect(x1, y1, x2, y2, bgColor);
+  _mainSprite.fillRoundRect(x1 - TIMEBOXMARGIN - 3, y1 - TIMEBOXMARGIN - 3, x2 - x1 + TIMEBOXMARGIN * 2 + 6, y2 - y1 + TIMEBOXMARGIN * 2 + 6, radius, lineColor);
 }
 /***************************************************
   ADSB Data Parsing
@@ -676,16 +637,16 @@ u_int16_t getLiveADSBStatusColorFromSquawk(int _flightSquawk)
 ****************************************************/
 void drawClockBase(int centerX, int centerY, u_int16_t clockColor = TFT_YELLOW)
 {
-  //x,y,w,h,color
-  _sprite.fillRect(centerX - 80, centerY - 36, 200 , 36, TFT_BLACK);
+  // x,y,w,h,color
+  _mainSprite.fillRect(centerX - 80, centerY - 36, 200, 36, TFT_BLACK);
 
-  _sprite.setTextColor(clockColor);
-  _sprite.setFreeFont(&CLOCKFONT);
-  _sprite.setTextDatum(BL_DATUM);
+  _mainSprite.setTextColor(clockColor);
+  _mainSprite.setFreeFont(&CLOCKFONT);
+  _mainSprite.setTextDatum(BL_DATUM);
 
-  _sprite.drawString(String(timeHour) + ":" + String(timeMin) + ":" + String(timeSec), centerX - 60, centerY-1);
+  _mainSprite.drawString(String(timeHour) + ":" + String(timeMin) + ":" + String(timeSec), centerX - 60, centerY - 1);
 
-  _sprite.unloadFont();  
+  _mainSprite.unloadFont();
 }
 
 #define COL1 20
@@ -719,7 +680,7 @@ void outputRow(TFT_eSprite &__sprite, int __row, String _col1, String _col2 = ""
   __sprite.setFreeFont(&ADSBLINEFONT);
   __sprite.setTextColor(TFT_DARKGREY);
   __sprite.setTextDatum(TL_DATUM);
-  
+
   __sprite.drawString(_col1.c_str(), COL1, __row * ROWHEIGHT);
   __sprite.drawString(_col4.c_str(), COL4, __row * ROWHEIGHT);
   __sprite.drawString(_col5.c_str(), COL5, __row * ROWHEIGHT);
@@ -727,11 +688,10 @@ void outputRow(TFT_eSprite &__sprite, int __row, String _col1, String _col2 = ""
 
   __sprite.setFreeFont(&ADSBLINEDETAILFONT);
   __sprite.setTextColor(__overrideColor1);
-  __sprite.drawString(_col2.c_str(), COL2, __row * ROWHEIGHT-5);  
+  __sprite.drawString(_col2.c_str(), COL2, __row * ROWHEIGHT - 5);
   __sprite.setTextColor(__overrideColor2);
-  __sprite.drawString(_col3.c_str(), COL3, __row * ROWHEIGHT-5);
+  __sprite.drawString(_col3.c_str(), COL3, __row * ROWHEIGHT - 5);
   __sprite.unloadFont();
-
 }
 
 void RenderGeneralStatsSprite()
@@ -741,13 +701,13 @@ void RenderGeneralStatsSprite()
 
   RenderHeadingtoSprite(_topStatSprite, "Aircraft Statistics", TFT_WHITE, TFT_BLACK);
 
-  outputRow(_topStatSprite, 1,"Fastest:", _flightStats.aircraft[_flightStats.fastestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.fastestAircraft].speed)) + "kt");
-  outputRow(_topStatSprite,2, "Slowest:", _flightStats.aircraft[_flightStats.slowestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.slowestAircraft].speed)) + "kt");
-  outputRow(_topStatSprite,3, "Highest:", _flightStats.aircraft[_flightStats.highestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.highestAircraft].altitude)) + "ft");
-  outputRow(_topStatSprite,4, "Lowest:", _flightStats.aircraft[_flightStats.lowestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.lowestAircraft].altitude)) + "ft");
-  outputRow(_topStatSprite,5, "Closest:", _flightStats.aircraft[_flightStats.closestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.closestAircraft].distance)) + "nmi");
-  outputRow(_topStatSprite,6, "Farthest:", _flightStats.aircraft[_flightStats.farthestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.farthestAircraft].distance)) + "nmi");
-  outputRow(_topStatSprite, 7, "Emergencies:", (_flightStats.emergencyCount > 0)?String(_flightStats.emergencyCount): "None","","","", (_flightStats.emergencyCount > 0)?TFT_RED:TFT_GREEN);
+  outputRow(_topStatSprite, 1, "Fastest:", _flightStats.aircraft[_flightStats.fastestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.fastestAircraft].speed)) + "kt");
+  outputRow(_topStatSprite, 2, "Slowest:", _flightStats.aircraft[_flightStats.slowestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.slowestAircraft].speed)) + "kt");
+  outputRow(_topStatSprite, 3, "Highest:", _flightStats.aircraft[_flightStats.highestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.highestAircraft].altitude)) + "ft");
+  outputRow(_topStatSprite, 4, "Lowest:", _flightStats.aircraft[_flightStats.lowestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.lowestAircraft].altitude)) + "ft");
+  outputRow(_topStatSprite, 5, "Closest:", _flightStats.aircraft[_flightStats.closestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.closestAircraft].distance)) + "nmi");
+  outputRow(_topStatSprite, 6, "Farthest:", _flightStats.aircraft[_flightStats.farthestAircraft].identifier, String((int)(_flightStats.aircraft[_flightStats.farthestAircraft].distance)) + "nmi");
+  outputRow(_topStatSprite, 7, "Emergencies:", (_flightStats.emergencyCount > 0) ? String(_flightStats.emergencyCount) : "None", "", "", "", (_flightStats.emergencyCount > 0) ? TFT_RED : TFT_GREEN);
 }
 
 #define P_ROWHEIGHTSMALL 14
@@ -757,12 +717,12 @@ void RenderGeneralStatsSprite()
 #define P_ROW1 2
 #define P_ROW2 P_ROW1 + P_ROWHEIGHTSMALL
 #define P_ROW3 P_ROW2 + P_ROWHEIGHTBIG
-#define P_ROW4 P_ROW3 + P_ROWHEIGHTSMALL + P_ROWHEIGHTSMALL+ P_ROWHEIGHTSMALL
+#define P_ROW4 P_ROW3 + P_ROWHEIGHTSMALL + P_ROWHEIGHTSMALL + P_ROWHEIGHTSMALL
 #define P_ROW5 P_ROW4 + P_ROWHEIGHTSMALL
 #define P_ROW6 P_ROW5 + P_ROWHEIGHTBIG
 #define P_ROW7 P_ROW6 + P_ROWHEIGHTSMALL
 #define P_ROW8 P_ROW7 + P_ROWHEIGHTSMALL
-#define P_ROW8 P_ROW9 + P_ROWHEIGHTSMALL
+#define P_ROW9 P_ROW8 + P_ROWHEIGHTSMALL
 
 #define P_COLWIDTHSMALL 8
 #define P_COLWIDTHBIG 65
@@ -773,8 +733,6 @@ void RenderGeneralStatsSprite()
 #define P_COL4 P_COL3 + P_COLWIDTHBIG
 #define P_COL5 P_COL4 + P_COLWIDTHBIG + P_COLWIDTHSMALL
 #define P_COL6 P_COL5 + P_COLWIDTHBIG
-
-
 
 void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
 {
@@ -804,11 +762,11 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
   {
     int __pBoxSize = 80;
 
-    sprite.fillRoundRect(DISPLAY_WIDTH - __pBoxSize, P_ROW1, __pBoxSize-2, P_ROW3 - 6, 4, TFT_MAGENTA);
+    sprite.fillRoundRect(DISPLAY_WIDTH - __pBoxSize, P_ROW1, __pBoxSize - 2, P_ROW3 - 6, 4, TFT_MAGENTA);
     sprite.setTextDatum(TC_DATUM);
 
     sprite.setFreeFont(&FLIGHTDETAILS_NUMBERFONT);
-    sprite.drawString(String(_flightStats.totalAircraft), (DISPLAY_WIDTH - __pBoxSize/2) - 5, P_ROW1 );
+    sprite.drawString(String(_flightStats.totalAircraft), (DISPLAY_WIDTH - __pBoxSize / 2) - 5, P_ROW1);
     sprite.unloadFont();
   }
 
@@ -821,13 +779,13 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
     sprite.unloadFont();
   }
 
-  // aircraft make  
+  // aircraft make
   if (aircraft.description.length() > 0)
   {
     sprite.setFreeFont(&FLIGHTDETAILS_DESCRIPTIONFONT);
     sprite.setTextColor(TFT_WHITE);
     sprite.setTextDatum(TC_DATUM);
-    sprite.drawString(aircraft.description, DISPLAY_WIDTH/2, P_ROW3 );
+    sprite.drawString(aircraft.description, DISPLAY_WIDTH / 2, P_ROW3);
     sprite.unloadFont();
   }
 
@@ -861,8 +819,8 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
     sprite.unloadFont();
   }
 
-  //altitude
-  if(aircraft.altitude > 0)
+  // altitude
+  if (aircraft.altitude > 0)
   {
     sprite.setTextDatum(TL_DATUM);
     sprite.setFreeFont(&FLIGHTDETAILS_LABELFONT);
@@ -870,12 +828,11 @@ void RenderAircraftToSprite(TFT_eSprite &sprite, AircraftDetailsStruct aircraft)
     sprite.drawString(String((int)aircraft.altitude) + "ft", P_COL5, P_ROW7);
     sprite.unloadFont();
   }
-
 }
 
 void RenderEmergencySprite(int __emergencyAircraftIndex)
 {
- 
+
   DEBUG_PRINTLN("RenderEmergencySprite: ADSB " + String(__emergencyAircraftIndex));
   RenderAircraftToSprite(_emergencySprite[__emergencyAircraftIndex], _flightStats.aircraft[_flightStats.emergencyAircraft[__emergencyAircraftIndex]]);
   _emergencySprite[__emergencyAircraftIndex].drawRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, TFT_RED);
@@ -886,9 +843,9 @@ void renderEmpty()
 {
   clearSprite();
 
-  _sprite.fillRoundRect(0, 0, DISPLAY_WIDTH, ROWHEIGHT * 2, 5, TFT_WHITE);
-  _sprite.setTextColor(TFT_BLACK);
-  _sprite.setFreeFont(&SYSINFOHEADINGFONT);
+  _mainSprite.fillRoundRect(0, 0, DISPLAY_WIDTH, ROWHEIGHT * 2, 5, TFT_WHITE);
+  _mainSprite.setTextColor(TFT_BLACK);
+  _mainSprite.setFreeFont(&SYSINFOHEADINGFONT);
 
   /*
       TL_DATUM = 0 = Top left
@@ -901,10 +858,10 @@ void renderEmpty()
       BC_DATUM = 7 = Bottom centre
       BR_DATUM = 8 = Bottom right
   */
-  _sprite.setTextDatum(1);
-  _sprite.drawString("No aircraft are", CENTERX, 2);
-  _sprite.drawString("currently being tracked", CENTERX, ROWHEIGHT);
-  _sprite.unloadFont();
+  _mainSprite.setTextDatum(1);
+  _mainSprite.drawString("No aircraft are", CENTERX, 2);
+  _mainSprite.drawString("currently being tracked", CENTERX, ROWHEIGHT);
+  _mainSprite.unloadFont();
 }
 
 #define SI_ROWFONTOFFSET 6
@@ -918,66 +875,105 @@ void renderSystemInfo()
   _batteryVoltage = (analogRead(4) * 2 * 3.3 * 1000) / 4096;
   String __batteryVoltage = String(_batteryVoltage / 1000, 1) + "V " + String(_batteryVoltage / 1000 / 5.0 * 100, 0) + "%";
 
-  RenderHeadingtoSprite(_sprite, "Aircraft Tracker (v"+String(MCMDVERSION)+")", TFT_CYAN, TFT_BLACK);
+  RenderHeadingtoSprite(_mainSprite, "Aircraft Tracker (v" + String(MCMDVERSION) + ")", TFT_CYAN, TFT_BLACK);
 
-
-  outputRow(_sprite, 1, "WiFi", getWiFIAPName(),"","","");
-  outputRow(_sprite, 2, "IP", IpAddress2String(WiFi.localIP()),"","","");
-  outputRow(_sprite, 3, "Strength", String(getWiFiSignalQuality()) + "%","","","");
-  outputRow(_sprite, 4, "Power", __batteryVoltage,"","","");
-  outputRow(_sprite, 5, "Memory", String(ESP.getFreeHeap()),"","","");
-  outputRow(_sprite, 6, "By", "markbeets@gmail.com","","","");
+  outputRow(_mainSprite, 1, "WiFi", getWiFIAPName(), "", "", "");
+  outputRow(_mainSprite, 2, "IP", IpAddress2String(WiFi.localIP()), "", "", "");
+  outputRow(_mainSprite, 3, "Strength", String(dBmtoPercentage(WiFi.RSSI())) + "%", "", "", "");
+  outputRow(_mainSprite, 4, "Power", __batteryVoltage, "", "", "");
+  outputRow(_mainSprite, 5, "Memory", String(ESP.getFreeHeap()), "", "", "");
+  outputRow(_mainSprite, 6, "By", "markbeets@gmail.com", "", "", "");
 }
 
-uint16_t getAircraftColorByAltitude(TFT_eSprite &sprite, int altitude) {
+uint16_t getAircraftColorByAltitude(TFT_eSprite &sprite, int altitude)
+{
   // Get the color based on the altitude
-  uint16_t color = sprite.color565(255,255,255);
-  if (altitude <= 500) {
-      color = sprite.color565(255, 0, 0); // Red for very low altitude
-  } else if (altitude <= 2000) {
-      color = sprite.color565(255, 165, 0); // Orange for low altitude
-  } else if (altitude <= 6000) {
-      color = sprite.color565(255, 255, 0); // Yellow for medium-low altitude
-  } else if (altitude <= 10000) {
-      color = sprite.color565(0, 255, 0); // Green for medium altitude
-  } else if (altitude <= 20000) {
-      color = sprite.color565(0, 0, 255); // Blue for high altitude
-  } else if (altitude <= 30000) {
-      color = sprite.color565(75, 0, 130); // Indigo for very high altitude
-  } else {
-      color = sprite.color565(238, 130, 238); // Violet for extremely high altitude
+  uint8_t r, g, b;
+
+  if (altitude <= 2000)
+  {
+    r = 255; g = 165; b = 0; // Orange for low altitude
   }
-  return color;
+  else if (altitude <= 6000)
+  {
+    float factor = (altitude - 2000) / 4000.0;
+    r = 255;
+    g = 165 + factor * (255 - 165);
+    b = 0;
+  }
+  else if (altitude <= 10000)
+  {
+    float factor = (altitude - 6000) / 4000.0;
+    r = 255 - factor * 255;
+    g = 255;
+    b = factor * 255;
+  }
+  else if (altitude <= 20000)
+  {
+    float factor = (altitude - 10000) / 10000.0;
+    r = 0;
+    g = 255 - factor * 255;
+    b = 255;
+  }
+  else if (altitude <= 30000)
+  {
+    float factor = (altitude - 20000) / 10000.0;
+    r = factor * 75;
+    g = 0;
+    b = 255 - factor * (255 - 130);
+  }
+  else
+  {
+    float factor = (altitude - 30000) / 10000.0;
+    r = 75 + factor * (238 - 75);
+    g = factor * 130;
+    b = 130 + factor * (238 - 130);
+  }
+
+  return sprite.color565(r, g, b);
 }
 
 // Function to render the map
-void renderMap(TFT_eSprite &_sprite) {
+void renderMap(TFT_eSprite &_sprite)
+{
   DEBUG_PRINTLN("Rendering map...");
 
   // Clear the sprite
   DEBUG_PRINTLN("Clearing sprite...");
   _sprite.fillSprite(TFT_BLACK);
+
+
+  if(_flightStats.totalAircraft==0)
+  {
+    renderEmpty();
+    return;
+  }
+
   _sprite.setTextDatum(TL_DATUM);
   _sprite.setFreeFont(&FLIGHTDETAILS_MINIHEADINGFONT);
 
   // Draw the center cross
   DEBUG_PRINTLN("Drawing center cross...");
+
   int centerX = DISPLAY_WIDTH / 2;
   int centerY = DISPLAY_HEIGHT / 2;
 
   // Determine the maximum latitude and longitude differences in miles
   float maxLatDiffMiles = 0;
   float maxLonDiffMiles = 0;
-  for (int i = 0; i < _flightStats.totalAircraft; i++) {
+  for (int i = 0; i < _flightStats.totalAircraft; i++)
+  {
     float latDiff = abs(_flightStats.aircraft[i].latitude - myLat);
     float lonDiff = abs(_flightStats.aircraft[i].longitude - myLon);
 
     // Convert latitude and longitude differences to miles
-    float latDiffMiles = latDiff * 69.0; // 1 degree latitude ≈ 69 miles
+    float latDiffMiles = latDiff * 69.0;                       // 1 degree latitude ≈ 69 miles
     float lonDiffMiles = lonDiff * 69.0 * cos(radians(myLat)); // Adjust longitude by cos(latitude)
 
-    if (latDiffMiles > maxLatDiffMiles) maxLatDiffMiles = latDiffMiles;
-    if (lonDiffMiles > maxLonDiffMiles) maxLonDiffMiles = lonDiffMiles;
+    if (latDiffMiles > maxLatDiffMiles)
+      maxLatDiffMiles = latDiffMiles;
+    if (lonDiffMiles > maxLonDiffMiles)
+      maxLonDiffMiles = lonDiffMiles;
   }
 
   // Calculate scaling factors
@@ -990,17 +986,24 @@ void renderMap(TFT_eSprite &_sprite) {
   float radius_10_miles = 10 * scale; // Radius for 10 miles in pixels
   float radius_50_miles = 50 * scale; // Radius for 50 miles in pixels
 
+  _sprite.setTextColor(TFT_GREY);
+  _sprite.setTextDatum(BC_DATUM);
   // Draw the circles representing 10 miles and 50 miles
   _sprite.drawCircle(centerX, centerY, static_cast<int>(radius_10_miles), TFT_DARKGREY); // Circle for 10 miles
   _sprite.drawCircle(centerX, centerY, static_cast<int>(radius_50_miles), TFT_DARKGREY); // Circle for 50 miles
 
-  _sprite.drawLine(centerX - static_cast<int>(target_2point5_miles), centerY, centerX + static_cast<int>(target_2point5_miles), centerY, TFT_WHITE); // Horizontal line
-  _sprite.drawLine(centerX, centerY - static_cast<int>(target_2point5_miles), centerX, centerY + static_cast<int>(target_2point5_miles), TFT_WHITE); // Vertical line
-  
+
+  _sprite.drawString("10", centerX , centerY + static_cast<int>(radius_10_miles));
+  _sprite.drawString("50", centerX , centerY + static_cast<int>(radius_50_miles));
+
+
+  _sprite.drawLine(centerX - static_cast<int>(target_2point5_miles), centerY, centerX + static_cast<int>(target_2point5_miles), centerY, CENTER_COLOR); // Horizontal line
+  _sprite.drawLine(centerX, centerY - static_cast<int>(target_2point5_miles), centerX, centerY + static_cast<int>(target_2point5_miles), CENTER_COLOR); // Vertical line
 
   // Render each aircraft
   DEBUG_PRINTLN("Rendering aircraft...");
-  for (int i = 0; i < _flightStats.totalAircraft; i++) {
+  for (int i = 0; i < _flightStats.totalAircraft; i++)
+  {
     AircraftDetailsStruct __aircraft = _flightStats.aircraft[i];
     DEBUG_PRINTLN("Processing aircraft: " + __aircraft.identifier);
 
@@ -1013,32 +1016,44 @@ void renderMap(TFT_eSprite &_sprite) {
 
     // Scale the differences to fit within the display
     int __x = centerX + static_cast<int>(__lonDiffMiles * scale);
-    int __y = centerY - static_cast<int>(__latDiffMiles * scale);
+    int __y = centerY - static_cast<int>(__latDiffMiles * scale); // Subtract latitude difference for northern hemisphere
 
     DEBUG_PRINTLN("Calculated position: x=" + String(__x) + ", y=" + String(__y));
 
-    if (__x >= DISPLAY_WIDTH || __x < 0 || __y >= DISPLAY_HEIGHT || __y < 0) {
+    if (__x >= DISPLAY_WIDTH || __x < 0 || __y >= DISPLAY_HEIGHT || __y < 0)
+    {
       DEBUG_PRINTLN("Aircraft is outside display bounds, skipping...");
       continue; // Skip if the aircraft is outside the display bounds
     }
 
     DEBUG_PRINTLN("Getting color for aircraft");
     uint16_t __aircraftColor = getAircraftColorByAltitude(_sprite, __aircraft.altitude); // Get color based on altitude
+    
     DEBUG_PRINTLN("Generated color for aircraft: " + String(__aircraftColor, HEX));
 
-    // Draw the aircraft as a filled circle
-    _sprite.fillCircle(__x, __y, 5, __aircraftColor);
+    _sprite.fillCircle(__x, __y, 8, __aircraftColor);
     DEBUG_PRINTLN("Aircraft rendered at position: x=" + String(__x) + ", y=" + String(__y));
-
-    _sprite.setTextColor(TFT_WHITE);
-    _sprite.drawString(__aircraft.identifier, __x + 5, __y + 5);
     
+    int __lineLength = 25;
+    
+    // Draw heading line
+    float headingRadians = radians(__aircraft.heading);
+    int lineX = __x + static_cast<int>(__lineLength * sin(headingRadians));
+    int lineY = __y - static_cast<int>(__lineLength * cos(headingRadians));
+    _sprite.drawLine(__x, __y, lineX, lineY, __aircraftColor);
+
+    if (__aircraft.identifierUnknown)
+    {
+      DEBUG_PRINTLN("Aircraft identifier is unknown, skipping text rendering...");
+      _sprite.setTextDatum(TL_DATUM);
+      _sprite.setTextColor(TFT_WHITE);
+      _sprite.drawString(__aircraft.identifier, __x + 5, __y + 5);
+    }
   }
   _sprite.unloadFont();
 
   DEBUG_PRINTLN("Map rendering complete.");
 }
-
 
 /***************************************************
   MQTT
@@ -1076,10 +1091,20 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   if (__incomingTopic == "cmnd/mcmddevices/brightness")
   {
     _brightness = __payloadString.toInt();
+    DEBUG_PRINTLN("Setting Brightness to: " + String(_brightness));
+    setBrightness(_brightness);
+  }
+
+  if (__incomingTopic == "cmnd/mcmddevices/brightnesspercentage")
+  {
+    _brightness = __payloadString.toInt();
     _brightness = map(_brightness, 0, 100, 0, 255);
     DEBUG_PRINTLN("Setting Brightness to: " + String(_brightness));
     setBrightness(_brightness);
   }
+
+  
+
 }
 void mqttCustomSubscribe() {}
 void mqttTransmitCustomStat() {}
@@ -1091,11 +1116,18 @@ void initDisplay()
 {
   DEBUG_PRINTLN("Initialising Display");
 
-    // Automatically determine the access device
-    if (!_amoled.begin()) {
-      while (1) {
-          DEBUG_PRINTLN("There is a problem with the device!~"); delay(1000);
-      }
+  
+  int __amoledRetryCount = 0;
+  while (!_amoled.begin())
+  {
+    DEBUG_PRINTLN("There is a problem with the device!~");
+    delay(1000);
+    __amoledRetryCount++;
+    if (__amoledRetryCount >= 3)
+    {
+      DEBUG_PRINTLN("Restarting device after 3 failed attempts...");
+      ESP.restart();
+    }
   }
 
   if (_configFlipSreen == 999)
@@ -1105,13 +1137,11 @@ void initDisplay()
   //_display.setRotation(_configFlipSreen);
   //_amoled.setRotation(_configFlipSreen);
 
-  _sprite.setSwapBytes(true);
+  _mainSprite.setSwapBytes(true);
   _amoled.setBrightness(_brightnesses[_selectedBrightness]);
 
-
-  _sprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-  _sprite.setTextColor(TFT_WHITE, TFT_BLACK);
-
+  _mainSprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+  _mainSprite.setTextColor(TFT_WHITE, TFT_BLACK);
 
   _overviewStatSprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
   _overviewStatSprite.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -1121,8 +1151,6 @@ void initDisplay()
 
   _mapSprite.createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT);
   _mapSprite.setTextColor(TFT_WHITE, TFT_BLACK);
-
-    
 
   for (byte i = 0; i < MAXRENDER_EMERGENCIES; i++)
   {
@@ -1172,9 +1200,9 @@ void setupWebServer()
 
 
 					   __infoStr += "<hr  class='new5'>";
-             for (byte i = 0; i < _numADSBs; i++)
+             for (byte i = 0; i < DEBUGBUFFERLENGTH; i++)
              {
-                __infoStr += _ADSBBuffer[i] + "\n<br>";
+                __infoStr += _debugBuffer[i] + "\n<br>";
              }           
 					   __infoStr += "<hr class='new5'>Connected to: " + String(SSID) + " (" + _rssiQualityPercentage + "%)<br>";
 					   __infoStr += "Last Message Received:  <i>" + _lastMQTTMessage;
@@ -1350,8 +1378,10 @@ void updateFlightStats()
     DisplayOut("Parsing flight data");
     if (jsonResponse.length() > 0)
     {
-      //_flightDetailsJSONDoc = DynamicJsonDocument(20000);
-      _flightDetailsJSONDoc.clear(); // Clear the document before use
+      DynamicJsonDocument _flightDetailsJSONDoc(20000);
+
+      //_flightDetailsJSONDoc.clear();       // Clear the document before use
+      //_flightDetailsJSONDoc.shrinkToFit(); // Release unused memory
       DeserializationError error = deserializeJson(_flightDetailsJSONDoc, jsonResponse);
 
       if (!error)
@@ -1376,15 +1406,14 @@ void updateADSBDataRenderSprites()
 
   clearSprite();
   //_sprite.pushSprite(0, 0);
-  _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_sprite.getPointer());
+  _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
 
   DisplayOut("Updating ADSB departures");
 
   updateLocalTime();
   updateFlightStats();
 
-  _numADSBs = _flightStats.totalAircraft;
-  DisplayOut("Found " + String(_numADSBs) + " aircraft");
+  DisplayOut("Found " + String(_flightStats.totalAircraft) + " aircraft");
 
   _runDataUpdate = millis();
   int __maxrenderEmergencies = min(_flightStats.emergencyCount, MAXRENDER_EMERGENCIES);
@@ -1395,15 +1424,13 @@ void updateADSBDataRenderSprites()
   }
 
   DisplayOut("Rendering overview screen");
-  RenderAircraftToSprite(_overviewStatSprite,  _flightStats.aircraft[_flightStats.closestAircraft]);
+  RenderAircraftToSprite(_overviewStatSprite, _flightStats.aircraft[_flightStats.closestAircraft]);
 
   DisplayOut("Rendering general statistics");
   RenderGeneralStatsSprite();
 
   DisplayOut("Rendering Map Sprite");
   renderMap(_mapSprite);
-
-  
 }
 
 void setupWifi()
@@ -1436,13 +1463,10 @@ void setup()
   _mqttClientId = MQTT_CLIENTNAME;
   _deviceClientName = MQTT_CLIENTNAME;
 
-
-  pinMode(38, OUTPUT);
-  digitalWrite(38, HIGH); // turn off the LED for now
-
+  
   initDisplay();
   delay(250); // give the screen time to init
-  
+
   DisplayOut("Starting ADSBMonitor");
   DisplayOut("----------------------------------");
   
@@ -1474,6 +1498,7 @@ void setup()
   _mqttClient.setServer(MQTT_SERVERADDRESS, 1883);
   _mqttClient.setCallback(mqttCallback);
 
+  
   DisplayOut("Free Heap Memory: " + String(ESP.getFreeHeap()));
 
   DisplayOut("DNS Setup");
@@ -1491,14 +1516,14 @@ void setup()
   DisplayOut("IP:" + _ip);
 
   DisplayOut("Setting up button 1");
-  //_button1.setPressMs(2000);
   _button1.attachClick(rotateBrightness);
   _button1.attachDoubleClick(toggleSysInfoFrame);
 
   DisplayOut("Setting up button 2");
-  //_button2.setPressMs(2000);
+  
   _button2.attachClick(advanceFrame);
   _button2.attachDuringLongPress(rebootESP);
+  _button2.attachDoubleClick(updateADSBDataRenderSprites);
 
   DisplayOut("Opening Filesystem");
   setupSPIFFS();
@@ -1508,6 +1533,8 @@ void setup()
   setupTimeClient();
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   updateLocalTime();
+  
+
 
   DisplayOut("Initialisation complete");
   _forceUpdate = true;
@@ -1528,6 +1555,7 @@ void loop()
     if (_runCurrent - _runDataUpdate >= UPDATE_ADSBS_INTERVAL_MILLISECS || _forceUpdate)
     {
       updateADSBDataRenderSprites();
+      _forceUpdate = true;
     }
 
     if (_runCurrent - _runWiFiConnectionCheck >= UPDATE_WIFICHECK_INTERVAL_MILLISECS)
@@ -1546,12 +1574,11 @@ void loop()
 
       DEBUG_PRINTLN("Current Frame: " + String(_currentFrame));
 
-      if (_numADSBs == 0)
+      if (_flightStats.totalAircraft == 0)
       {
         renderEmpty();
         //_sprite.pushSprite(0, 0);
-        _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_sprite.getPointer());
-
+        _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
       }
       else
       {
@@ -1565,24 +1592,24 @@ void loop()
           break;
         case 1:
           DEBUG_PRINTLN("Pushing Overview sprite to main sprite");
-          _overviewStatSprite.pushToSprite(&_sprite, 0, 0);
+          _overviewStatSprite.pushToSprite(&_mainSprite, 0, 0);
           _skipDrawClock = false;
           break;
         case 2:
           DEBUG_PRINTLN("Pushing TopStat sprite to main sprite");
-          _topStatSprite.pushToSprite(&_sprite, 0, 0);
+          _topStatSprite.pushToSprite(&_mainSprite, 0, 0);
           _skipDrawClock = true;
           break;
-          case 3:
+        case 3:
           DEBUG_PRINTLN("Pushing map to main sprite");
-          _mapSprite.pushToSprite(&_sprite, 0, 0);
+          _mapSprite.pushToSprite(&_mainSprite, 0, 0);
           _skipDrawClock = true;
-          break;          
+          break;
         default:
           if (_currentFrame > 3 && _currentFrame < 7 && _currentFrame < _flightStats.emergencyCount + 3)
           {
             DEBUG_PRINTLN("Pushing Emergency sprite [" + String(_currentSubFrame - 4) + "] to main sprite");
-            _emergencySprite[_currentFrame - 4].pushToSprite(&_sprite, 0, 0);
+            _emergencySprite[_currentFrame - 4].pushToSprite(&_mainSprite, 0, 0);
             _skipDrawClock = false;
           }
           break;
@@ -1590,8 +1617,7 @@ void loop()
       }
 
       //_sprite.pushSprite(0, 0);
-      _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_sprite.getPointer());
-
+      _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
 
       _currentFrame++;
       if (_currentFrame > _flightStats.emergencyCount + 3)
@@ -1607,24 +1633,22 @@ void loop()
     if ((_runCurrent - _runTime >= UPDATE_TIME_INTERVAL_MILLISECS) || _forceDrawClock)
     {
       updateLocalTime();
-      if (!_skipDrawClock) 
+      if (!_skipDrawClock)
       {
-        
-        
+
         drawClockBase(CENTERX, DISPLAY_HEIGHT, (_currentFrame == 0 ? TFT_CYAN : TFT_YELLOW));
       }
       _forceDrawClock = false;
       _runTime = millis();
     }
 
-    //_sprite.pushSprite(0, 0);
-    _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_sprite.getPointer());
+    _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
+
+  
+
   }
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    _mqttClient.loop();
-    ArduinoOTA.handle();        /* this function will handle incomming chunk of SW, flash and respond sender */
-    _httpServer.handleClient(); //// Check if a client has connected
-  }
+  _mqttClient.loop();
+  ArduinoOTA.handle();        /* this function will handle incomming chunk of SW, flash and respond sender */
+  _httpServer.handleClient(); //// Check if a client has connected
 }
