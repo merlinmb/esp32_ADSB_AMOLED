@@ -69,6 +69,10 @@ OneButton _button1 = OneButton(BUTTON1, true, true);
 OneButton _button2 = OneButton(BUTTON2, true, true);
 
 #define BRIGHTNESS_PIN 14
+
+#define MAXBRIGHTNESS 255
+#define MINBRIGHTNESS 0
+
 int _brightnesses[5] = {0, 51, 115, 192, 255};
 int _selectedBrightness = 4;
 
@@ -78,9 +82,6 @@ int _selectedBrightness = 4;
 #define location "51.39502, -1.3387" // 97 Enborne Road
 
 #define MCMDVERSION 1.4
-
-#define MAXBRIGHTNESS 255
-#define MINBRIGHTNESS 20
 
 #define BACKGROUNDCOLOR TFT_BLACK
 #define CENTER_COLOR TFT_GREENYELLOW
@@ -132,7 +133,7 @@ LilyGo_Class _amoled;
 #define CENTERX DISPLAY_WIDTH / 2
 #define CENTERY DISPLAY_HEIGHT / 2
 
-#define UPDATE_WIFICHECK_INTERVAL_MILLISECS 60000 // Update every 1 min
+#define UPDATE_WIFICHECK_INTERVAL_MILLISECS 30000 // Update every 1 min
 #define UPDATE_CALLINGATSCROLL 120                // Update every 200ms
 #define UPDATE_CALLINGATSCROLLPAUSE 2000          // Pause for x time if the end of the scrolling screen is reached
 #define UPDATE_UI_FRAME_INTERVAL_MILLISECS 10000  // transition screen every ... milliseconds
@@ -957,25 +958,50 @@ void renderMap(TFT_eSprite &_sprite)
   // Determine the maximum latitude and longitude differences in miles
   float maxLatDiffMiles = 1;
   float maxLonDiffMiles = 1;
-  for (int i = 0; i < _flightStats.totalAircraft; i++)
-  {
+
+
+  // Adjust the scale to ensure all aircraft fit within the display
+  float maxLatDiff = 0;
+  float maxLonDiff = 0;
+
+  for (int i = 0; i < _flightStats.totalAircraft; i++) {
     float latDiff = abs(_flightStats.aircraft[i].latitude - myLat);
     float lonDiff = abs(_flightStats.aircraft[i].longitude - myLon);
 
-    // Convert latitude and longitude differences to miles
-    float latDiffMiles = latDiff * 69.0;                       // 1 degree latitude ≈ 69 miles
-    float lonDiffMiles = lonDiff * 69.0 * cos(radians(myLat)); // Adjust longitude by cos(latitude)
-
-    if (latDiffMiles > maxLatDiffMiles)
-      maxLatDiffMiles = latDiffMiles;
-    if (lonDiffMiles > maxLonDiffMiles)
-      maxLonDiffMiles = lonDiffMiles;
+    if (latDiff > maxLatDiff) maxLatDiff = latDiff;
+    if (lonDiff > maxLonDiff) maxLonDiff = lonDiff;
   }
 
-  // Calculate scaling factors
+  // Convert latitude and longitude differences to miles
+  maxLatDiffMiles = maxLatDiff * 69.0;                       // 1 degree latitude ≈ 69 miles
+  maxLonDiffMiles = maxLonDiff * 69.0 * cos(radians(myLat)); // Adjust longitude by cos(latitude)
+
+  DEBUG_PRINTLN("Max latitude difference in miles: " + String(maxLatDiffMiles));
+  DEBUG_PRINTLN("Max longitude difference in miles: " + String(maxLonDiffMiles));
+
+  
+  // Recalculate scaling factors
   float xScale = (DISPLAY_WIDTH / 2.0) / maxLonDiffMiles;
   float yScale = (DISPLAY_HEIGHT / 2.0) / maxLatDiffMiles;
+
   float scale = min(xScale, yScale); // Use the smaller scale to maintain proportions
+  DEBUG_PRINTLN("Calculated scale is: " + String(scale));
+
+
+  if (scale<1)
+  {
+    DEBUG_PRINTLN("Scale is less than 1, setting to 1");
+    // If the scale is less than 1, set it to 1 to avoid too small scaling
+    scale = 1;
+  }
+  if (scale>20)
+  {
+    DEBUG_PRINTLN("Scale is greater than 20, setting to 20");
+    // If the scale is greater than 20, set it to 20 to avoid too large scaling
+    scale = 20;
+  }
+
+  scale =5; // Set a fixed scale for testing
 
   // Draw center lines and circles with scaling based on miles
   float target_2point5_miles = 2.5 * scale;
@@ -997,7 +1023,7 @@ void renderMap(TFT_eSprite &_sprite)
   _sprite.drawLine(centerX, centerY - static_cast<int>(target_2point5_miles), centerX, centerY + static_cast<int>(target_2point5_miles), CENTER_COLOR); // Vertical line
 
   // Render each aircraft
-  DEBUG_PRINTLN("Rendering aircraft...");
+  DEBUG_PRINTLN("Rendering aircraft...with scale: " + String(scale));
   for (int i = 0; i < _flightStats.totalAircraft; i++)
   {
     AircraftDetailsStruct __aircraft = _flightStats.aircraft[i];
@@ -1018,7 +1044,7 @@ void renderMap(TFT_eSprite &_sprite)
 
     if (__x >= DISPLAY_WIDTH || __x < 0 || __y >= DISPLAY_HEIGHT || __y < 0)
     {
-      DEBUG_PRINTLN("Aircraft is outside display bounds, skipping...");
+      DEBUG_PRINTLN("*** Aircraft is outside display bounds, skipping...");
       continue; // Skip if the aircraft is outside the display bounds
     }
 
@@ -1087,6 +1113,16 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
   if (__incomingTopic == "cmnd/mcmddevices/brightness")
   {
     _brightness = __payloadString.toInt();
+
+		int __newBrightness = __payloadString.toInt();
+
+		if (__newBrightness < MINBRIGHTNESS)
+			__newBrightness = MINBRIGHTNESS;
+		if (__newBrightness > MAXBRIGHTNESS)
+			__newBrightness = MAXBRIGHTNESS;
+
+		float __contrastVal = MAXBRIGHTNESS * __newBrightness / 100;
+
     DEBUG_PRINTLN("Setting Brightness to: " + String(_brightness));
     setBrightness(_brightness);
   }
@@ -1481,20 +1517,12 @@ void setup()
   DisplayOut("OTA Firmware Setup");
   setupOTA();
 
-  DisplayOut("Configuring MQTT");
-  setupMQTT();
-  mqttReconnect(_mqttClientId);
-  mqttCustomSubscribe();
-  mqttSendInitStat();
+  
 
   DisplayOut("Setup Time Server");
   checkBST();
 
-  DisplayOut("Attempting MQTT: ");
-  DisplayOut(String(MQTT_SERVERADDRESS) + ":1883");
-  _mqttClient.setServer(MQTT_SERVERADDRESS, 1883);
-  _mqttClient.setCallback(mqttCallback);
-
+  
   
   DisplayOut("Free Heap Memory: " + String(ESP.getFreeHeap()));
 
@@ -1511,6 +1539,14 @@ void setup()
   }
   _ip = WiFi.localIP().toString();
   DisplayOut("IP:" + _ip);
+
+
+
+  DisplayOut("Configuring MQTT");
+	setupMQTT();
+	mqttReconnect(_mqttClientId);
+	mqttSendInitStat();
+
 
   DisplayOut("Setting up button 1");
   _button1.attachClick(rotateBrightness);
@@ -1559,6 +1595,11 @@ void loop()
     {
       isWiFiConnected(); // make sure we're still connected
       _runWiFiConnectionCheck = millis();
+
+      if (!_mqttClient.connected())
+      {
+        mqttReconnect();
+      }      
     }
 
     if ((_runCurrent - _runFrame >= UPDATE_UI_FRAME_INTERVAL_MILLISECS) || _forceUpdate || _forceRender)
@@ -1639,9 +1680,7 @@ void loop()
       _runTime = millis();
     }
 
-    _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());
-
-  
+    _amoled.pushColors(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, (uint16_t *)_mainSprite.getPointer());  
 
   }
 
