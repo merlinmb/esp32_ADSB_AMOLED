@@ -1,13 +1,10 @@
 #pragma once
 
-const char * SSID = "merlinhome";
-const char* WIFIPASSWORD = "n00n00head";
+#define WIFI_ACCESSPOINT "network1"
+#define WIFI_ACCESSPOINT_PASSWORD "password1"
 
-#define WIFI_ACCESSPOINT "merlinhome"
-#define WIFI_ACCESSPOINT_PASSWORD "n00n00head"
-
-#define WIFI_ACCESSPOINT1 "MCMD_IoT24"
-#define WIFI_ACCESSPOINT_PASSWORD1 "n00n00head5504"
+#define WIFI_ACCESSPOINT1 "network2"
+#define WIFI_ACCESSPOINT_PASSWORD1 "password2"
 
 int MQTT_MAX_PACKET_SIZE = 256;
 const char* MQTT_SERVERADDRESS = "192.168.1.55";
