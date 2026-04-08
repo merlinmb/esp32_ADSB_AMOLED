@@ -36,7 +36,9 @@
 #define DEBUG_PRINTLNDEC(x, DEC)
 #endif
 
+#ifndef MQTT_MAX_PACKET_SIZE
 #define MQTT_MAX_PACKET_SIZE 512
+#endif
 
 byte _networkConnection = 1;
 
@@ -70,7 +72,7 @@ byte _ledBuiltIn = 12;
 WiFiUDP ntpUDP;
 // const byte offset = 2;
 #define OFFSET 1
-char* _timeServer = "pool.ntp.org";
+const char* _timeServer = "pool.ntp.org"; //"162.159.200.1"; //
 NTPClient _timeClient(ntpUDP, _timeServer, OFFSET, 60000);
 unsigned long _unixTime;
 String _ntpDate = "";
@@ -470,8 +472,26 @@ int isWiFiConnected(String deviceName, String apName, String apPassword)
 
 	DEBUG_PRINTLN();
 	DEBUG_PRINTLN("WiFi connected\r\n");
-	DEBUG_PRINT("IP address: ");
-	DEBUG_PRINTLN(WiFi.localIP());
+
+	// Print network info
+	DEBUG_PRINT("IP: "); DEBUG_PRINTLN(WiFi.localIP().toString());
+	DEBUG_PRINT("Gateway: "); DEBUG_PRINTLN(WiFi.gatewayIP().toString());
+	DEBUG_PRINT("Subnet: "); DEBUG_PRINTLN(WiFi.subnetMask().toString());
+
+	#ifdef ESP32
+		DEBUG_PRINT("DNS: "); DEBUG_PRINTLN(WiFi.dnsIP().toString());
+	#else
+		DEBUG_PRINT("DNS0: "); DEBUG_PRINTLN(WiFi.dnsIP(0).toString());
+		DEBUG_PRINT("DNS1: "); DEBUG_PRINTLN(WiFi.dnsIP(1).toString());
+	#endif
+
+	// Try resolving a known hostname
+	IPAddress resolved;
+	if (WiFi.hostByName("pool.ntp.org", resolved)) {
+		DEBUG_PRINTLN("Resolved pool.ntp.org -> " + resolved.toString());
+	} else {
+		DEBUG_PRINTLN("DNS lookup failed for pool.ntp.org");
+	}
 
 	_rssi = WiFi.RSSI();
 	DEBUG_PRINT(_rssi); // Signal strength in dBm
@@ -522,9 +542,9 @@ int zellersCongruence(int year, int month, int day) {
   return dayOfWeek ; // Convert to Arduino's date format (Sat = 1, Sunday = 1, ...)
 }
 
+#ifndef LEAP_YEAR
 #define LEAP_YEAR(Y)     ( (Y>0) && !(Y%4) && ( (Y%100) || !(Y%400) ))     // from time-lib
-
-#define LEAP_YEAR(Y)     ( (Y>0) && !(Y%4) && ( (Y%100) || !(Y%400) ))     // from time-lib
+#endif
 
 int calcDayOfWeek(uint16_t year, uint8_t month, uint8_t day)
 {
@@ -668,8 +688,16 @@ void setupMQTT(String deviceName, String mqttServerIP, uint16_t mqttServerPort)
 	DEBUG_PRINTLN(mqttServerPort);
 
 	_mqttClient.setBufferSize(MQTT_MAX_PACKET_SIZE);
-	//_mqttClient.setServer(strdup(mqttServerIP.c_str()), mqttServerPort);
-	_mqttClient.setServer(mqttServerIP.c_str(), mqttServerPort);
+	IPAddress mqttAddr;
+	if (mqttAddr.fromString(mqttServerIP)) {
+		_mqttClient.setServer(mqttAddr, mqttServerPort);
+	} else {
+		// Fallback for hostnames: copy to a persistent buffer to avoid dangling pointer
+		static char _mqttServerHostBuf[64];
+		strncpy(_mqttServerHostBuf, mqttServerIP.c_str(), sizeof(_mqttServerHostBuf) - 1);
+		_mqttServerHostBuf[sizeof(_mqttServerHostBuf) - 1] = '\0';
+		_mqttClient.setServer(_mqttServerHostBuf, mqttServerPort);
+	}
 	delay(500);
 	mqttReconnect(deviceName);
 }
@@ -696,3 +724,4 @@ void mqttSendInitStat()
 		mqttTransmitInitStat();
 	}
 }
+

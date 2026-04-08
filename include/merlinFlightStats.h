@@ -6,9 +6,25 @@
 #include <HTTPClient.h>
 #include <limits>
 #include <math.h>
+#include <esp_heap_caps.h>
+
+// Allocator that routes ArduinoJson memory to PSRAM instead of internal SRAM.
+// The T-Display-AMOLED has 8MB of PSRAM; internal heap is only ~300KB.
+struct SpiRamAllocator {
+    void* allocate(size_t size) {
+        return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    void deallocate(void* pointer) {
+        heap_caps_free(pointer);
+    }
+    void* reallocate(void* ptr, size_t new_size) {
+        return heap_caps_realloc(ptr, new_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+};
+using SpiRamJsonDocument = BasicJsonDocument<SpiRamAllocator>;
 
 
-const char* host = "192.168.1.99"; // Flight data source
+const char* host = "192.168.1.48"; // Flight data source
 const char* path = "/data/aircraft.json";
 const int port = 8080;
 
@@ -64,16 +80,16 @@ float haversine(float lat1, float lon1, float lat2, float lon2) {
     */
     float dLat = radians(lat2 - lat1);
     float dLon = radians(lon2 - lon1);
-    Serial.print("dLat: "); Serial.println(dLat, 6);
-    Serial.print("dLon: "); Serial.println(dLon, 6);
+    DEBUG_PRINT("dLat: "); DEBUG_PRINTLNDEC(dLat, 6);
+    DEBUG_PRINT("dLon: "); DEBUG_PRINTLNDEC(dLon, 6);
     
     float a = sin(dLat / 2) * sin(dLat / 2) +
               cos(radians(lat1)) * cos(radians(lat2)) *
               sin(dLon / 2) * sin(dLon / 2);
-    Serial.print("a: "); Serial.println(a, 6);
+    DEBUG_PRINT("a: "); DEBUG_PRINTLNDEC(a, 6);
     
     float c = 2 * atan2(sqrtf(a), sqrtf(1 - a));
-    Serial.print("c: "); Serial.println(c, 6);
+    DEBUG_PRINT("c: "); DEBUG_PRINTLNDEC(c, 6);
 
     return EARTH_RADIUS_KM * c;
 }
@@ -84,54 +100,65 @@ String getFlightStatus(float verticalRate) {
     return "Cruising";
 }
 
-String fetchFlightData(const char* host, const char* path, const int port) {
+// Fetches aircraft.json and parses it directly into doc via streaming.
+// Uses a filter to discard unused fields before they consume heap space.
+// Returns true on success. Avoids holding the full raw JSON in a String.
+bool fetchFlightData(const char* host, const char* path, const int port, SpiRamJsonDocument &doc) {
     WiFiClient client;
-    //client.setInsecure(); // Disable certificate validation for testing
 
     DEBUG_PRINTLN("Connecting to " + String(host) + ":" + String(port));
     if (!client.connect(host, port)) {
         DEBUG_PRINTLN("Connection failed!");
-        return "";
+        return false;
     }
-    client.setTimeout(1000); // Set a timeout for reading the response
-    
+    client.setTimeout(5000);
+
+    // HTTP/1.0 avoids chunked transfer encoding, which would embed hex chunk-size
+    // markers in the body and corrupt the JSON stream.
     DEBUG_PRINTLN("Sending GET request to " + String(host) + ":" + String(port) + String(path));
-    client.print(String("GET ") + path + " HTTP/1.1\r\n" +
+    client.print(String("GET ") + path + " HTTP/1.0\r\n" +
                  "Host: " + host + "\r\n" +
                  "Connection: close\r\n\r\n");
-    
-    DEBUG_PRINTLN("Fetching response");
-    String __response = "";
 
-    // Skip headers
+    DEBUG_PRINTLN("Fetching response");
+
+    // Skip HTTP headers
     DEBUG_PRINTLN("Skipping Headers");
-    while (client.connected()) {
+    while (client.connected() || client.available()) {
         String line = client.readStringUntil('\n');
-        if (line == "\r") {  // Headers end with an empty line
+        if (line == "\r" || line == "\r\n" || line.length() == 0) {
             break;
         }
     }
-    int __retryCount = 0;
-    DEBUG_PRINTLN("Reading Response in chunks");
-    while ((client.connected() || client.available()) && __retryCount < 10) {
-        if (client.available()) {
-            char c = client.read(); // Read one byte at a time
-            __response += c; // Append the byte to the response
-            //DEBUG_PRINT(c);
-        } else {
-            delay(1); // Allow time for more data to arrive
-            __retryCount++;
-        }
-    }
 
-    //DEBUG_PRINTLN(__response);
+    // Filter: only keep the fields we actually use in processFlightData().
+    // ArduinoJson discards everything else before allocating heap, cutting
+    // document memory by ~70-80% compared to parsing the full JSON.
+    DynamicJsonDocument filter(512);
+    JsonObject filterAircraft = filter["aircraft"][0].to<JsonObject>();
+    filterAircraft["callsign"]     = true;
+    filterAircraft["type"]         = true;
+    filterAircraft["squawk"]       = true;
+    filterAircraft["route"]        = true;
+    filterAircraft["alt_baro"]     = true;
+    filterAircraft["gs"]           = true;
+    filterAircraft["baro_rate"]    = true;
+    filterAircraft["flight"]       = true;
+    filterAircraft["r"]            = true;
+    filterAircraft["desc"]         = true;
+    filterAircraft["lat"]          = true;
+    filterAircraft["lon"]          = true;
+    filterAircraft["true_heading"] = true;
 
-    DEBUG_PRINTLN("Parsing JSON of length: " + String(__response.length()));
-    int jsonStart = __response.indexOf('{');
-    if (jsonStart != -1) {
-        return __response.substring(jsonStart);
+    // Stream-parse directly from the TCP socket — no intermediate String buffer.
+    DEBUG_PRINTLN("Streaming and parsing JSON");
+    DeserializationError error = deserializeJson(doc, client, DeserializationOption::Filter(filter));
+
+    if (error) {
+        DEBUG_PRINTLN("JSON parsing failed! " + String(error.c_str()));
+        return false;
     }
-    return "";
+    return true;
 }
 
 void printAircraft(AircraftDetailsStruct AircraftToPrint)
@@ -167,7 +194,7 @@ bool isSquawkEmergency(int squawkCode) {
     return  (squawkCode == 0030 ||squawkCode == 7600 || squawkCode == 7500 || _flightStats.emergencyCount == 7700 || _flightStats.emergencyCount == 2000) ;
 }
 
-void processFlightData(DynamicJsonDocument &doc)
+void processFlightData(SpiRamJsonDocument &doc)
 {
 
     DEBUG_PRINTLN("processFlightData()\n");

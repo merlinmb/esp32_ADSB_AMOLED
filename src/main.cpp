@@ -2,6 +2,8 @@
 #include <FS.h>
 #include <SPIFFS.h>
 
+//#define DEBUG 1
+
 #include <Arduino.h>
 #include <LilyGo_AMOLED.h> //To use LilyGo AMOLED series screens, please include <LilyGo_AMOLED.h>
 #include "TFT_eSPI.h"
@@ -116,6 +118,12 @@ bool _forceDrawFlightDetails = false;
 bool _forceDrawSysInfo = false;
 bool _forceDrawADSB = false;
 bool _forceDrawEmpty = false;
+
+// Burn-in prevention for the "no aircraft" screen
+int _emptyYOffset = 0;
+int _emptyYDir = 1;
+#define EMPTY_BOUNCE_STEP 20
+#define EMPTY_BOUNCE_MAX (DISPLAY_HEIGHT - ROWHEIGHT * 2)
 
 String _locationCode = "";
 
@@ -641,6 +649,7 @@ void drawClockBase(int centerX, int centerY, u_int16_t clockColor = TFT_YELLOW)
   _mainSprite.setFreeFont(&CLOCKFONT);
   _mainSprite.setTextDatum(BL_DATUM);
 
+  //_mainSprite.drawString(String(timeHour) + ":" + String(timeMin), centerX - 50, centerY - 1);
   _mainSprite.drawString(String(timeHour) + ":" + String(timeMin) + ":" + String(timeSec), centerX - 60, centerY - 1);
 
   _mainSprite.unloadFont();
@@ -840,7 +849,17 @@ void renderEmpty()
 {
   clearSprite();
 
-  _mainSprite.fillRoundRect(0, 0, DISPLAY_WIDTH, ROWHEIGHT * 2, 5, TFT_WHITE);
+  // Advance Y offset for burn-in prevention (ping-pong)
+  _emptyYOffset += EMPTY_BOUNCE_STEP * _emptyYDir;
+  if (_emptyYOffset >= EMPTY_BOUNCE_MAX) {
+    _emptyYOffset = EMPTY_BOUNCE_MAX;
+    _emptyYDir = -1;
+  } else if (_emptyYOffset <= 0) {
+    _emptyYOffset = 0;
+    _emptyYDir = 1;
+  }
+
+  _mainSprite.fillRoundRect(0, _emptyYOffset, DISPLAY_WIDTH, ROWHEIGHT * 2, 5, TFT_WHITE);
   _mainSprite.setTextColor(TFT_BLACK);
   _mainSprite.setFreeFont(&SYSINFOHEADINGFONT);
 
@@ -856,8 +875,8 @@ void renderEmpty()
       BR_DATUM = 8 = Bottom right
   */
   _mainSprite.setTextDatum(1);
-  _mainSprite.drawString("No aircraft are", CENTERX, 2);
-  _mainSprite.drawString("currently being tracked", CENTERX, ROWHEIGHT);
+  _mainSprite.drawString("No aircraft are", CENTERX, _emptyYOffset + 2);
+  _mainSprite.drawString("currently being tracked", CENTERX, _emptyYOffset + ROWHEIGHT);
   _mainSprite.unloadFont();
 }
 
@@ -1121,8 +1140,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 		if (__newBrightness > MAXBRIGHTNESS)
 			__newBrightness = MAXBRIGHTNESS;
 
-		float __contrastVal = MAXBRIGHTNESS * __newBrightness / 100;
-
+    _brightness = __payloadString.toInt();
+    _brightness = map(_brightness, 0, 100, 0, 255);
     DEBUG_PRINTLN("Setting Brightness to: " + String(_brightness));
     setBrightness(_brightness);
   }
@@ -1406,26 +1425,17 @@ void updateFlightStats()
     DEBUG_PRINTLN("WiFi Connected");
     DEBUG_PRINTLN("updateFlightStats.fetchFlightData");
     DisplayOut("Fetching flight data");
-    String jsonResponse = fetchFlightData(host, path, port);
+
+    // Allocate document in PSRAM (8MB available) so internal SRAM is not consumed.
+    // Streaming + filtering means we never hold the raw JSON in a String buffer;
+    // only the ~13 fields per aircraft we actually use are stored.
+    SpiRamJsonDocument _flightDetailsJSONDoc(65536);
 
     DisplayOut("Parsing flight data");
-    if (jsonResponse.length() > 0)
+    if (fetchFlightData(host, path, port, _flightDetailsJSONDoc))
     {
-      DynamicJsonDocument _flightDetailsJSONDoc(20000);
-
-      //_flightDetailsJSONDoc.clear();       // Clear the document before use
-      //_flightDetailsJSONDoc.shrinkToFit(); // Release unused memory
-      DeserializationError error = deserializeJson(_flightDetailsJSONDoc, jsonResponse);
-
-      if (!error)
-      {
-        processFlightData(_flightDetailsJSONDoc);
-        printFlightStats();
-      }
-      else
-      {
-        DEBUG_PRINTLN("JSON parsing failed! " + String(error.c_str()));
-      }
+      processFlightData(_flightDetailsJSONDoc);
+      printFlightStats();
     }
     else
     {
@@ -1448,7 +1458,7 @@ void updateADSBDataRenderSprites()
 
   DisplayOut("Found " + String(_flightStats.totalAircraft) + " aircraft");
 
-  _runDataUpdate = millis();
+  _runDataUpdate = millis(); 
   int __maxrenderEmergencies = min(_flightStats.emergencyCount, MAXRENDER_EMERGENCIES);
   for (byte i = 0; i < __maxrenderEmergencies; i++)
   {
@@ -1515,16 +1525,8 @@ void setup()
 
   // DEBUG_PRINT(F("********** Free Heap: "));   DEBUG_PRINTLN(ESP.getFreeHeap());
   DisplayOut("OTA Firmware Setup");
-  setupOTA();
-
+  setupOTA();  
   
-
-  DisplayOut("Setup Time Server");
-  checkBST();
-
-  
-  
-  DisplayOut("Free Heap Memory: " + String(ESP.getFreeHeap()));
 
   DisplayOut("DNS Setup");
   if (MDNS.begin(_deviceClientName))
@@ -1566,9 +1568,12 @@ void setup()
   setupTimeClient();
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   updateLocalTime();
-  
+  DisplayOut("Check BST");
+  checkBST();
 
 
+
+  DisplayOut("Free Heap Memory: " + String(ESP.getFreeHeap()));
   DisplayOut("Initialisation complete");
   _forceUpdate = true;
   _forceRender = true;

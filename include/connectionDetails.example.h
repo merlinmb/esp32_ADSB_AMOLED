@@ -1,20 +1,17 @@
 #pragma once
 
-const char * SSID = "myWiFiSSID";
-const char* WIFIPASSWORD = "myWiFiPassword";
+const char * SSID = "merlinhome";
+const char* WIFIPASSWORD = "n00n00head";
 
-#define WIFI_ACCESSPOINT "xxx"
-#define WIFI_ACCESSPOINT_PASSWORD "yyy"
+#define WIFI_ACCESSPOINT "merlinhome"
+#define WIFI_ACCESSPOINT_PASSWORD "n00n00head"
 
-#define WIFI_ACCESSPOINT1 "yyy"
-#define WIFI_ACCESSPOINT_PASSWORD1 "xxx"
-
-#define OTA_UPDATE_USERNAME "admin"
-#define OTA_UPDATE_PASSWORD "xxx"
+#define WIFI_ACCESSPOINT1 "MCMD_IoT24"
+#define WIFI_ACCESSPOINT_PASSWORD1 "n00n00head5504"
 
 int MQTT_MAX_PACKET_SIZE = 256;
-const char* MQTT_SERVERADDRESS = "192.168.1.55"; //IP address of the MQTT broker
-const char* MQTT_CLIENTNAME = "espADSBMonitor"; //name of the device in MQTT
+const char* MQTT_SERVERADDRESS = "192.168.1.55";
+const char* MQTT_CLIENTNAME = "espADSBMonitor";
 const char* ARDUINO_OTA_URI_SUFFIX = "/firmware";
 const char* ARDUINO_OTA_UPDATE_USERNAME = "admin";
-const char* ARDUINO_OTA_UPDATE_PASSWORD = "my OTA password"; //password for OTA updates
+const char* ARDUINO_OTA_UPDATE_PASSWORD = "1llusion_mb";

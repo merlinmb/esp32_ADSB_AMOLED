@@ -11,7 +11,6 @@
 #include <WebServer.h>
 #endif
 
-#define DEBUG 1
 #ifdef DEBUG
 #define DEBUG_PRINT(x)			Serial.print (x)
 #define DEBUG_PRINTDEC(x,DEC)	Serial.print (x, DEC)
