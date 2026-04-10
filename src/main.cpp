@@ -1434,7 +1434,7 @@ void updateFlightStats()
     DisplayOut("Parsing flight data");
     if (fetchFlightData(host, path, port, _flightDetailsJSONDoc))
     {
-      processFlightData(_flightDetailsJSONDoc);
+      processFlightData(_flightDetailsJSONDoc, _flightStats);
       printFlightStats();
     }
     else

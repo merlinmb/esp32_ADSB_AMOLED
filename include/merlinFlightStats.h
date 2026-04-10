@@ -194,42 +194,42 @@ bool isSquawkEmergency(int squawkCode) {
     return  (squawkCode == 0030 ||squawkCode == 7600 || squawkCode == 7500 || _flightStats.emergencyCount == 7700 || _flightStats.emergencyCount == 2000) ;
 }
 
-void processFlightData(SpiRamJsonDocument &doc)
+void processFlightData(SpiRamJsonDocument &doc, FlightStats &target)
 {
 
     DEBUG_PRINTLN("processFlightData()\n");
-    
+
     JsonArray aircraft = doc["aircraft"].as<JsonArray>();
-    _flightStats.totalAircraft = aircraft.size();
+    target.totalAircraft = aircraft.size();
 
     DEBUG_PRINTLN("processFlightData:populating AircraftDetailsStructs");
-    DEBUG_PRINTLN("Total Aircraft from JSON: " + String(_flightStats.totalAircraft));
-    
+    DEBUG_PRINTLN("Total Aircraft from JSON: " + String(target.totalAircraft));
+
     float __highestAircraftaltitude = 0; // Initialize to 0
-    _flightStats.highestAircraft = 0;
+    target.highestAircraft = 0;
 
     float __lowestAircraftaltitude = std::numeric_limits<int>::max(); // Initialize to max value
-    _flightStats.lowestAircraft = 0;
+    target.lowestAircraft = 0;
 
     float __fastestAircraftspeed = 0; // Initialize to 0
-    _flightStats.fastestAircraft = 0;
+    target.fastestAircraft = 0;
 
     float __slowestAircraftspeed = std::numeric_limits<float>::max(); // Initialize to max value
-    _flightStats.slowestAircraft = 0;
+    target.slowestAircraft = 0;
 
     float __closestAircraftdistance = std::numeric_limits<float>::max(); // Initialize to max value
-    _flightStats.closestAircraft = 0;
+    target.closestAircraft = 0;
 
     float __farthestAircraftdistance = 0; // Initialize to 0
-    _flightStats.farthestAircraft = 0;
+    target.farthestAircraft = 0;
 
-    _flightStats.emergencyCount = 0;
+    target.emergencyCount = 0;
 
     float totalAltitude = 0;
     float totalSpeed = 0;
     int __currentAircraftIndex = 0;
     for (JsonObject plane : aircraft) {
-      
+
         DEBUG_PRINTLN("processFlightData:populating AircraftDetailsStructs");
         AircraftDetailsStruct __currentAircraft = {
             plane["callsign"] | "Unknown",
@@ -257,7 +257,7 @@ void processFlightData(SpiRamJsonDocument &doc)
 
         float distance = haversine(myLat, myLon, __currentAircraft.latitude, __currentAircraft.longitude);
         __currentAircraft.distance = distance;
-        
+
 
         printAircraft(__currentAircraft);
 
@@ -276,47 +276,47 @@ void processFlightData(SpiRamJsonDocument &doc)
         totalAltitude += __currentAircraft.altitude;
         totalSpeed += __currentAircraft.speed;
 
-        _flightStats.aircraft[__currentAircraftIndex] = __currentAircraft;
+        target.aircraft[__currentAircraftIndex] = __currentAircraft;
 
         DEBUG_PRINTLN("Calculating highest, lowest, fastest, slowest, closest, farthest, emergency");
         //highest, lowest, fastest, slowest, closest, farthest, emergency:
         if (__currentAircraft.altitude > __highestAircraftaltitude) {
-            _flightStats.highestAircraft = __currentAircraftIndex;
+            target.highestAircraft = __currentAircraftIndex;
             __highestAircraftaltitude = __currentAircraft.altitude;
         }
 
         if (__currentAircraft.altitude < __lowestAircraftaltitude && __currentAircraft.altitude > 0 && __currentAircraft.speed > 0) {
-            _flightStats.lowestAircraft = __currentAircraftIndex;
+            target.lowestAircraft = __currentAircraftIndex;
             __lowestAircraftaltitude = __currentAircraft.altitude;
         }
         if (__currentAircraft.speed > __fastestAircraftspeed) {
-            _flightStats.fastestAircraft = __currentAircraftIndex;
+            target.fastestAircraft = __currentAircraftIndex;
             __fastestAircraftspeed = __currentAircraft.speed;
         }
         if (__currentAircraft.speed < __slowestAircraftspeed && __currentAircraft.speed > 0) {
-            _flightStats.slowestAircraft = __currentAircraftIndex;
+            target.slowestAircraft = __currentAircraftIndex;
             __slowestAircraftspeed = __currentAircraft.speed;
         }
         if (distance > 0 && distance < __closestAircraftdistance ) {
-            _flightStats.closestAircraft = __currentAircraftIndex;
+            target.closestAircraft = __currentAircraftIndex;
             __closestAircraftdistance = distance;
         }
         if (distance > __farthestAircraftdistance) {
-            _flightStats.farthestAircraft = __currentAircraftIndex;
+            target.farthestAircraft = __currentAircraftIndex;
             __farthestAircraftdistance = distance;
         }
         if (isSquawkEmergency(__currentAircraft.squawk))
-            _flightStats.emergencyAircraft[_flightStats.emergencyCount++] = __currentAircraftIndex;
+            target.emergencyAircraft[target.emergencyCount++] = __currentAircraftIndex;
 
 
         __currentAircraftIndex++;
-        
-        _flightStats.totalAircraft = __currentAircraftIndex;
+
+        target.totalAircraft = __currentAircraftIndex;
         DEBUG_PRINTLN("Aircraft details captured " + String(__currentAircraftIndex));
     }
-    
-    _flightStats.avgAltitude = (_flightStats.totalAircraft > 0) ? totalAltitude / _flightStats.totalAircraft : 0;
-    _flightStats.avgSpeed = (_flightStats.totalAircraft > 0) ? totalSpeed / _flightStats.totalAircraft : 0;
+
+    target.avgAltitude = (target.totalAircraft > 0) ? totalAltitude / target.totalAircraft : 0;
+    target.avgSpeed = (target.totalAircraft > 0) ? totalSpeed / target.totalAircraft : 0;
 }
 
 
