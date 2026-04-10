@@ -1460,6 +1460,8 @@ void updateADSBDataRenderSprites()
 
   updateLocalTime();
 
+  xSemaphoreTake(_flightStatsMutex, portMAX_DELAY);
+
   DisplayOut("Found " + String(_flightStats.totalAircraft) + " aircraft");
 
   int __maxrenderEmergencies = min(_flightStats.emergencyCount, MAXRENDER_EMERGENCIES);
@@ -1477,6 +1479,8 @@ void updateADSBDataRenderSprites()
 
   DisplayOut("Rendering Map Sprite");
   renderMap(_mapSprite);
+
+  xSemaphoreGive(_flightStatsMutex);
 }
 
 void setupWifi()
@@ -1685,6 +1689,8 @@ void loop()
 
       DEBUG_PRINTLN("Current Frame: " + String(_currentFrame));
 
+      xSemaphoreTake(_flightStatsMutex, portMAX_DELAY);
+
       if (_flightStats.totalAircraft == 0)
       {
         renderEmpty();
@@ -1735,6 +1741,8 @@ void loop()
       {
         _currentFrame = 1;
       }
+
+      xSemaphoreGive(_flightStatsMutex);
 
       _forceUpdate = false;
       _forceRender = false;
