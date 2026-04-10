@@ -1492,6 +1492,46 @@ void setupWifi()
   }
 }
 
+// FreeRTOS task — runs on core 0. Sleeps until notified by the main loop,
+// then fetches + processes flight data into the staging struct, swaps it
+// into _flightStats under mutex, then sleeps again.
+void fetchTask(void *pvParameters)
+{
+  for (;;)
+  {
+    // Block indefinitely until xTaskNotifyGive() is called from the main loop.
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      DEBUG_PRINTLN("fetchTask: WiFi not connected, skipping");
+      _fetchInProgress = false;
+      continue;
+    }
+
+    DEBUG_PRINTLN("fetchTask: fetching flight data");
+
+    if (fetchFlightData(host, path, port, _flightDetailsJSONDoc))
+    {
+      processFlightData(_flightDetailsJSONDoc, _flightStatsStaging);
+
+      // Swap staging into live struct under mutex so the render path
+      // on core 1 never sees a partially-updated _flightStats.
+      xSemaphoreTake(_flightStatsMutex, portMAX_DELAY);
+      _flightStats = _flightStatsStaging;
+      xSemaphoreGive(_flightStatsMutex);
+
+      DEBUG_PRINTLN("fetchTask: data updated");
+    }
+    else
+    {
+      DEBUG_PRINTLN("fetchTask: fetchFlightData failed, keeping previous data");
+    }
+
+    _fetchInProgress = false;
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -1567,6 +1607,21 @@ void setup()
   checkBST();
 
 
+
+  // Create the mutex that guards _flightStats between core 0 (fetch) and core 1 (render).
+  _flightStatsMutex = xSemaphoreCreateMutex();
+
+  // Create the fetch task on core 0. Stack 8192 bytes is sufficient —
+  // JSON streaming writes into the global PSRAM doc, not the task stack.
+  xTaskCreatePinnedToCore(
+    fetchTask,        // task function
+    "fetchTask",      // name (debug)
+    8192,             // stack bytes
+    nullptr,          // parameter
+    1,                // priority (same as loop task)
+    &_fetchTaskHandle,// handle — used by loop to notify
+    0                 // core 0
+  );
 
   DisplayOut("Free Heap Memory: " + String(ESP.getFreeHeap()));
   DisplayOut("Initialisation complete");
