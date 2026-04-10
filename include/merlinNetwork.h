@@ -591,48 +591,59 @@ int lastSunday(int month, int year)
 	return lastDay;
 }
 
+// Cached BST state — recomputed once per hour, not every second tick.
+static bool _isBSTActive = false;
+static int  _isBSTCachedHour = -1;   // UTC hour when cache was last set
+static int  _isBSTCachedDay  = -1;   // UTC day when cache was last set
+
 bool isBST(struct tm *timeinfo)
 {
-
-	int year = 1900 + timeinfo->tm_year;
-	int month = timeinfo->tm_mon + 1; // tm_mon is 0-indexed (0 for January, 11 for December)
+	int year       = 1900 + timeinfo->tm_year;
+	int month      = timeinfo->tm_mon + 1; // 1-12
 	int dayOfMonth = timeinfo->tm_mday;
+	int hour       = timeinfo->tm_hour;    // UTC hour
 
-	  //if (month < 3 || month > 10) return false; // BST is not in effect
-	/*
-	DEBUG_PRINTLN("isBST()");
-	DEBUG_PRINTLN("Year: "+String(year));
-	DEBUG_PRINTLN("Month: "+String(month));
-	DEBUG_PRINTLN("dayOfMonth: "+String(dayOfMonth));
-	DEBUG_PRINTLN("  last sunday: 01-" + String(lastSunday(1,2024)));
-	DEBUG_PRINTLN("  last sunday: 02-" + String(lastSunday(2,2024)));
-	DEBUG_PRINTLN("  last sunday: 03-" + String(lastSunday(3,2024)));
-	DEBUG_PRINTLN("  last sunday: 04-" + String(lastSunday(4,2024)));
-	DEBUG_PRINTLN("  last sunday: 05-" + String(lastSunday(5,2024)));
-	DEBUG_PRINTLN("  last sunday: 06-" + String(lastSunday(6,2024)));
-	DEBUG_PRINTLN("  last sunday: 07-" + String(lastSunday(7,2024)));
-	DEBUG_PRINTLN("  last sunday: 08-" + String(lastSunday(8,2024)));
-	DEBUG_PRINTLN("  last sunday: 09-" + String(lastSunday(9,2024)));
-	DEBUG_PRINTLN("  last sunday: 10-" + String(lastSunday(10,2024)));
-	DEBUG_PRINTLN("  last sunday: 11-" + String(lastSunday(11,2024)));
-	DEBUG_PRINTLN("  last sunday: 12-" + String(lastSunday(12,2024)));
-	//DEBUG_PRINTLN("  last sunday: 2024 03-" + String(lastSunday(3,2024)));
-	*/
-
+	// Months clearly inside BST (April–September)
 	if (month > 3 && month < 10)
-		return true; // BST is in effect
-	// BST transition months (March and October)
+		return true;
+	// Months clearly outside BST (November–February)
+	if (month < 3 || month > 10)
+		return false;
 
-	if (month == 3 )
+	// Transition month: March — BST begins at 01:00 UTC on the last Sunday
+	if (month == 3)
 	{
-		return (dayOfMonth>= lastSunday(month, year));
+		int ls = lastSunday(month, year);
+		if (dayOfMonth > ls)  return true;
+		if (dayOfMonth < ls)  return false;
+		return (hour >= 1);   // transition day: active from 01:00 UTC
 	}
+
+	// Transition month: October — BST ends at 01:00 UTC on the last Sunday
+	// (clocks go back, so BST is active until 01:00 UTC)
 	if (month == 10)
 	{
-		return (dayOfMonth < lastSunday(month, year));
+		int ls = lastSunday(month, year);
+		if (dayOfMonth < ls)  return true;
+		if (dayOfMonth > ls)  return false;
+		return (hour < 1);    // transition day: active only before 01:00 UTC
 	}
 
 	return false;
+}
+
+// Call once per hour (or at boot) to update the cached BST flag.
+void refreshBSTCache(struct tm *timeinfo)
+{
+	int day  = timeinfo->tm_mday;
+	int hour = timeinfo->tm_hour;
+	if (day != _isBSTCachedDay || hour != _isBSTCachedHour)
+	{
+		_isBSTActive     = isBST(timeinfo);
+		_isBSTCachedDay  = day;
+		_isBSTCachedHour = hour;
+		DEBUG_PRINTLN("BST cache updated: BST is" + String(_isBSTActive ? "" : " not") + " active");
+	}
 }
 
 void checkBST()
@@ -641,18 +652,19 @@ void checkBST()
 #ifdef ESP32
 	if (!getLocalTime(&timeinfo))
 	{
-		DEBUG_PRINTLN("Could not retieve local time from ESP");
+		DEBUG_PRINTLN("Could not retrieve local time from ESP");
 		return;
 	}
-	bool __bst = isBST(&timeinfo);
-	DEBUG_PRINTLN("BST is" + String(__bst ? "" : " not") + " applied");
+	refreshBSTCache(&timeinfo);
+	DEBUG_PRINTLN("BST is" + String(_isBSTActive ? "" : " not") + " applied");
 #endif
 }
+
 void adjustBST(struct tm *timeinfo)
 {
-	if (isBST(timeinfo))
+	// Use cached value — isBST() is NOT called every tick.
+	if (_isBSTActive)
 	{
-		DEBUG_PRINTLN("adjustBST()");
 		timeinfo->tm_hour += 1;
 		if (timeinfo->tm_hour == 24)
 			timeinfo->tm_hour = 0;

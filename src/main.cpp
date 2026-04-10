@@ -1373,6 +1373,7 @@ void updateLocalTime()
     return;
   }
 
+  refreshBSTCache(&timeinfo); // recomputes only when the UTC hour changes
   adjustBST(&timeinfo);
 
   strftime(timeHour, 3, "%H", &timeinfo);
