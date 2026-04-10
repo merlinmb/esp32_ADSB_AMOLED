@@ -118,6 +118,7 @@ bool _forceDrawFlightDetails = false;
 bool _forceDrawSysInfo = false;
 bool _forceDrawADSB = false;
 bool _forceDrawEmpty = false;
+volatile bool _spritesNeedUpdate = false; // set by fetchTask after data swap; consumed by loop()
 
 // Burn-in prevention for the "no aircraft" screen
 int _emptyYOffset = 0;
@@ -1533,6 +1534,7 @@ void fetchTask(void *pvParameters)
       _flightStats = _flightStatsStaging;
       xSemaphoreGive(_flightStatsMutex);
 
+      _spritesNeedUpdate = true; // signal loop() to rebuild sprites from new data
       DEBUG_PRINTLN("fetchTask: data updated");
     }
     else
@@ -1628,8 +1630,10 @@ void setup()
     esp_restart();
   }
 
-  // Create the fetch task on core 0. Stack 8192 bytes is sufficient —
-  // JSON streaming writes into the global PSRAM doc, not the task stack.
+  // Create the fetch task on core 1. WiFiClient must run on core 1 — the
+  // Arduino WiFi/lwip API is designed for core 1 and relies on the IDLE
+  // task there for cooperative yielding. Running it on core 0 starves
+  // the core 0 IDLE task and triggers the task watchdog.
   xTaskCreatePinnedToCore(
     fetchTask,        // task function
     "fetchTask",      // name (debug)
@@ -1637,7 +1641,7 @@ void setup()
     nullptr,          // parameter
     1,                // priority (same as loop task)
     &_fetchTaskHandle,// handle — used by loop to notify
-    0                 // core 0
+    1                 // core 1 — same core as loop(), required for WiFiClient
   );
 
   DisplayOut("Free Heap Memory: " + String(ESP.getFreeHeap()));
@@ -1666,6 +1670,13 @@ void loop()
         xTaskNotifyGive(_fetchTaskHandle);
       }
       _forceUpdate = false;
+    }
+
+    if (_spritesNeedUpdate)
+    {
+      _spritesNeedUpdate = false;
+      updateADSBDataRenderSprites();
+      _forceRender = true; // push new sprites to screen on next frame tick
     }
 
     if (_runCurrent - _runWiFiConnectionCheck >= UPDATE_WIFICHECK_INTERVAL_MILLISECS)
