@@ -2,7 +2,7 @@
 #include <FS.h>
 #include <SPIFFS.h>
 
-//#define DEBUG 1
+#define DEBUG 1
 
 #include <Arduino.h>
 #include <LilyGo_AMOLED.h> //To use LilyGo AMOLED series screens, please include <LilyGo_AMOLED.h>
@@ -1139,9 +1139,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 			__newBrightness = MINBRIGHTNESS;
 		if (__newBrightness > MAXBRIGHTNESS)
 			__newBrightness = MAXBRIGHTNESS;
-
+    
     _brightness = __payloadString.toInt();
-    _brightness = map(_brightness, 0, 100, 0, 255);
     DEBUG_PRINTLN("Setting Brightness to: " + String(_brightness));
     setBrightness(_brightness);
   }
