@@ -1426,11 +1426,6 @@ void updateFlightStats()
     DEBUG_PRINTLN("updateFlightStats.fetchFlightData");
     DisplayOut("Fetching flight data");
 
-    // Allocate document in PSRAM (8MB available) so internal SRAM is not consumed.
-    // Streaming + filtering means we never hold the raw JSON in a String buffer;
-    // only the ~13 fields per aircraft we actually use are stored.
-    SpiRamJsonDocument _flightDetailsJSONDoc(65536);
-
     DisplayOut("Parsing flight data");
     if (fetchFlightData(host, path, port, _flightDetailsJSONDoc))
     {

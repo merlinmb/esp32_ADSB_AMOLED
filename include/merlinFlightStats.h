@@ -7,6 +7,9 @@
 #include <limits>
 #include <math.h>
 #include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 // Allocator that routes ArduinoJson memory to PSRAM instead of internal SRAM.
 // The T-Display-AMOLED has 8MB of PSRAM; internal heap is only ~300KB.
@@ -22,7 +25,6 @@ struct SpiRamAllocator {
     }
 };
 using SpiRamJsonDocument = BasicJsonDocument<SpiRamAllocator>;
-
 
 const char* host = "192.168.1.48"; // Flight data source
 const char* path = "/data/aircraft.json";
@@ -65,6 +67,25 @@ struct FlightStats {
 };
 
 FlightStats _flightStats;
+
+// --- FreeRTOS fetch-task globals ---
+// PSRAM-backed JSON document, allocated once at boot. 64KB is negligible
+// against the 8MB PSRAM and avoids per-cycle heap churn.
+SpiRamJsonDocument _flightDetailsJSONDoc(65536);
+
+// Staging struct — written exclusively by the fetch task on core 0.
+// Swapped into _flightStats under mutex when a fetch completes.
+FlightStats _flightStatsStaging;
+
+// Mutex protecting _flightStats during swap (fetch task) and render reads (loop task).
+SemaphoreHandle_t _flightStatsMutex = nullptr;
+
+// Handle to the fetch task — used by the main loop to send task notifications.
+TaskHandle_t _fetchTaskHandle = nullptr;
+
+// Set true while the fetch task is running; prevents re-triggering.
+volatile bool _fetchInProgress = false;
+// --- end FreeRTOS fetch-task globals ---
 
 #define EARTH_RADIUS_KM 6371.0
 //#define DEG_TO_RAD 0.017453292519943295
