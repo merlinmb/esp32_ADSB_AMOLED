@@ -1417,6 +1417,16 @@ void advanceFrame()
   _forceRender = true;
 }
 
+void triggerFetchFromButton()
+{
+  if (_fetchTaskHandle != nullptr && !_fetchInProgress)
+  {
+    _fetchInProgress = true;
+    _runDataUpdate = millis();
+    xTaskNotifyGive(_fetchTaskHandle);
+  }
+}
+
 void updateFlightStats()
 {
   DEBUG_PRINTLN("updateFlightStats");
@@ -1449,11 +1459,9 @@ void updateADSBDataRenderSprites()
   DisplayOut("Updating ADSB departures");
 
   updateLocalTime();
-  updateFlightStats();
 
   DisplayOut("Found " + String(_flightStats.totalAircraft) + " aircraft");
 
-  _runDataUpdate = millis(); 
   int __maxrenderEmergencies = min(_flightStats.emergencyCount, MAXRENDER_EMERGENCIES);
   for (byte i = 0; i < __maxrenderEmergencies; i++)
   {
@@ -1593,7 +1601,7 @@ void setup()
   
   _button2.attachClick(advanceFrame);
   _button2.attachDuringLongPress(rebootESP);
-  _button2.attachDoubleClick(updateADSBDataRenderSprites);
+  _button2.attachDoubleClick(triggerFetchFromButton);
 
   DisplayOut("Opening Filesystem");
   setupSPIFFS();
@@ -1647,8 +1655,13 @@ void loop()
 
     if (_runCurrent - _runDataUpdate >= UPDATE_ADSBS_INTERVAL_MILLISECS || _forceUpdate)
     {
-      updateADSBDataRenderSprites();
-      _forceUpdate = true;
+      if (!_fetchInProgress)
+      {
+        _fetchInProgress = true;
+        _runDataUpdate = millis();
+        xTaskNotifyGive(_fetchTaskHandle);
+      }
+      _forceUpdate = false;
     }
 
     if (_runCurrent - _runWiFiConnectionCheck >= UPDATE_WIFICHECK_INTERVAL_MILLISECS)
