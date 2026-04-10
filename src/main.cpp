@@ -1610,6 +1610,11 @@ void setup()
 
   // Create the mutex that guards _flightStats between core 0 (fetch) and core 1 (render).
   _flightStatsMutex = xSemaphoreCreateMutex();
+  if (_flightStatsMutex == nullptr)
+  {
+    Serial.println("FATAL: failed to create _flightStatsMutex");
+    esp_restart();
+  }
 
   // Create the fetch task on core 0. Stack 8192 bytes is sufficient —
   // JSON streaming writes into the global PSRAM doc, not the task stack.
