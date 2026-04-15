@@ -1021,7 +1021,7 @@ void renderMap(TFT_eSprite &_sprite)
     scale = 20;
   }
 
-  scale =5; // Set a fixed scale for testing
+  // scale = 5; // Set a fixed scale for testing
 
   // Draw center lines and circles with scaling based on miles
   float target_2point5_miles = 2.5 * scale;
@@ -1084,9 +1084,8 @@ void renderMap(TFT_eSprite &_sprite)
     int lineY = __y - static_cast<int>(__lineLength * cos(headingRadians));
     _sprite.drawLine(__x, __y, lineX, lineY, __aircraftColor);
 
-    if (__aircraft.identifierUnknown)
+    if (!__aircraft.identifierUnknown)
     {
-      DEBUG_PRINTLN("Aircraft identifier is unknown, skipping text rendering...");
       _sprite.setTextDatum(TL_DATUM);
       _sprite.setTextColor(TFT_WHITE);
       _sprite.drawString(__aircraft.identifier, __x + 5, __y + 5);
