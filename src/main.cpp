@@ -1021,7 +1021,7 @@ void renderMap(TFT_eSprite &_sprite)
     scale = 20;
   }
 
-  // scale = 5; // Set a fixed scale for testing
+  scale = 5; // Set a fixed scale for testing
 
   // Draw center lines and circles with scaling based on miles
   float target_2point5_miles = 2.5 * scale;
